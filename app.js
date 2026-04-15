@@ -1,420 +1,38 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { 
-    getFirestore, collection, doc, setDoc, onSnapshot, 
-    deleteDoc, getDoc, getDocs, query, writeBatch 
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-const firebaseConfig = {
-    apiKey: "AIzaSyCqHy9ny-hi_92Rem_Y7QQlhGVCM_7yEcQ",
-    authDomain: "asistencia-809aa.firebaseapp.com",
-    projectId: "asistencia-809aa",
-    storageBucket: "asistencia-809aa.firebasestorage.app",
-    messagingSenderId: "1084715358166",
-    appId: "1:1084715358166:web:a4ba59e2286ab4be54b677"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-
-// --- 1. GUARDAR / EDITAR ALUMNO ---
-const registroForm = document.getElementById('registroForm');
-if(registroForm) {
-    registroForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const dni = document.getElementById('dni').value;
-        const datos = {
-            dni: dni,
-            nombres: document.getElementById('nombres').value,
-            grado: document.getElementById('grado').value,
-            seccion: document.getElementById('seccion').value,
-            telefono: document.getElementById('telefono').value
-        };
-        try {
-            await setDoc(doc(db, "alumnos", dni), datos);
-            alert("Alumno guardado con éxito");
-            window.generarSoloQR(dni);
-            registroForm.reset();
-        } catch (error) { alert("Error al guardar: " + error.message); }
-    });
-}
-
-window.cambiarFechaAsistencia = (nuevaFecha) => {
-    // nuevaFecha viene en formato YYYY-MM-DD del input
-    console.log("Cambiando vista a:", nuevaFecha);
-    
-    // Llamamos a la función que escucha la asistencia pero con la fecha seleccionada
-    iniciarControlAsistencia(nuevaFecha);
-};
-
-
-// --- 2. GENERAR QR ---
-window.generarSoloQR = async (dni) => {
-    const qrDiv = document.getElementById("qrcode");
-    const container = document.getElementById('qrContainer');
-    
-    const txtNombres = document.getElementById('soloNombresMostrado');
-    const txtApellidos = document.getElementById('soloApellidosMostrado');
-    const txtDni = document.getElementById('dniMostrado');
-    const txtGradoSec = document.getElementById('gradoSeccionMostrado');
-    
-    qrDiv.innerHTML = "Generando..."; 
-
-    try {
-        const docRef = doc(db, "alumnos", dni);
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-            const datos = docSnap.data();
-            qrDiv.innerHTML = "";
-            
-            // Generar QR con tamaño estándar para carnet
-            new QRCode(qrDiv, { text: dni, width: 160, height: 160 });
-
-            // Lógica de separación de nombres
-            const palabras = (datos.nombres || "").trim().split(' ');
-            let nombresArr = "";
-            let apellidosArr = "";
-
-            if (palabras.length >= 3) {
-                nombresArr = palabras.slice(0, 2).join(' ');
-                apellidosArr = palabras.slice(2).join(' ');
-            } else {
-                nombresArr = palabras[0] || "";
-                apellidosArr = palabras.slice(1).join(' ') || "";
-            }
-
-            // CORRECCIÓN: Usar las variables correctas (nombresArr y apellidosArr)
-            txtNombres.innerText = nombresArr.toUpperCase();
-            txtApellidos.innerText = apellidosArr.toUpperCase();
-            
-            // Datos escolares
-            txtDni.innerText = "DNI: " + datos.dni;
-            txtGradoSec.innerText = `${datos.grado || '-'}° "${datos.seccion || '-'}"`.toUpperCase();
-
-            // Ajuste dinámico de tamaño para evitar desbordamientos
-            setTimeout(() => {
-                if(typeof window.ajustarTextoDinámico === 'function') {
-                    window.ajustarTextoDinámico('soloNombresMostrado');
-                    window.ajustarTextoDinámico('soloApellidosMostrado');
-                }
-            }, 100);
-
-            // Interfaz y navegación
-            window.mostrarSeccion('registro'); 
-            container.classList.remove('hidden');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            
-        } else {
-            alert("No se encontró el alumno en la base de datos.");
-        }
-    } catch (error) {
-        console.error("Error al generar QR:", error);
-    }
-};
-
-window.cerrarDia = async () => {
-    const hoy = new Date().toLocaleDateString('en-CA');
-    if (!confirm("¿Finalizar día y enviar notificaciones de FALTA a los padres?")) return;
-
-    try {
-        const batch = writeBatch(db); // Ahora sí funcionará con la importación correcta
-        const snapAlumnos = await getDocs(collection(db, "alumnos"));
-        const snapAsistencia = await getDocs(collection(db, "asistencia", hoy, "registros"));
-        
-        const asistieronDni = new Set();
-        snapAsistencia.forEach(docSnap => asistieronDni.add(docSnap.id));
-
-        let contFaltas = 0;
-
-        for (const docAlumno of snapAlumnos.docs) {
-            const dni = docAlumno.id;
-            const datosAlu = docAlumno.data();
-
-            if (!asistieronDni.has(dni)) {
-                contFaltas++;
-                
-                // 1. Registro en Firebase
-                const refFalta = doc(db, "asistencia", hoy, "registros", dni);
-                batch.set(refFalta, {
-                    nombres: datosAlu.nombres,
-                    hora: "--:--:--",
-                    estado: "Faltó",
-                    fecha: hoy
-                }, { merge: true });
-
-                // 2. Envío de Notificación (Agregamos await para asegurar el envío)
-                if (datosAlu.telefono) {
-                    const mensajeFalta = `*INASISTENCIA*\n\nEstimado apoderado, se le informa que el estudiante *${datosAlu.nombres.toUpperCase()}* no ha registrado su asistencia el día de hoy (${hoy}).\n\n_I.E. Horacio Zeballos Gámez_`;
-                    await window.enviarNotificacionUltraMsg(datosAlu.telefono, datosAlu.nombres, "Faltó", mensajeFalta);
-                }
-            }
-        }
-
-        await batch.commit(); 
-        alert(`Éxito: Se registraron ${contFaltas} faltas.`);
-        
-    } catch (error) {
-        console.error("Error en cerrarDia:", error);
-        alert("Error: " + error.message);
-    }
-};
-
-// --- 3. ASISTENCIA EN TIEMPO REAL ---
-// --- 3. ASISTENCIA EN TIEMPO REAL AGRUPADA ---
-const iniciarControlAsistencia = (fechaManual = null) => {
-    const hoy = fechaManual || new Date().toLocaleDateString('en-CA');
-    const contenedorAsis = document.getElementById('asistenciaHoy'); // Asegúrate que este sea un DIV contenedor, no un TBODY
-    if(!contenedorAsis) return;
-
-    onSnapshot(collection(db, "asistencia", hoy, "registros"), async (snapshot) => {
-        contenedorAsis.innerHTML = "";
-        
-        if (snapshot.empty) {
-            contenedorAsis.innerHTML = `<div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">No hay ingresos registrados para esta fecha (${hoy})...</div>`;
-            return;
-        }
-
-        // 1. Recopilar datos y obtener Grado/Sección de cada alumno
-        const registros = [];
-        for (const docSnap of snapshot.docs) {
-            const d = docSnap.data();
-            const dni = docSnap.id;
-            
-            // Buscamos info del alumno para saber su grado/sección
-            const docAlu = await getDoc(doc(db, "alumnos", dni));
-            const aluData = docAlu.exists() ? docAlu.data() : { grado: '?', seccion: '?' };
-            
-            registros.push({
-                ...d,
-                dni,
-                aula: `${aluData.grado}° "${aluData.seccion}"`.toUpperCase()
-            });
-        }
-
-        // 2. Agrupar por Aula (Grado + Sección)
-        const grupos = registros.reduce((acc, curr) => {
-            if (!acc[curr.aula]) acc[curr.aula] = [];
-            acc[curr.aula].push(curr);
-            return acc;
-        }, {});
-
-        // 3. Renderizar Bloques por Sección
-        Object.keys(grupos).sort().forEach(aula => {
-            const sectionDiv = document.createElement('div');
-            sectionDiv.className = "mb-8 overflow-hidden rounded-xl border border-slate-200 shadow-sm";
-            
-            sectionDiv.innerHTML = `
+import{initializeApp}from"\u0068\u0074\u0074\u0070\u0073\u003A\u002F\u002F\u0077\u0077\u0077\u002E\u0067\u0073\u0074\u0061\u0074\u0069\u0063\u002E\u0063\u006F\u006D\u002F\u0066\u0069\u0072\u0065\u0062\u0061\u0073\u0065\u006A\u0073\u002F\u0031\u0030\u002E\u0037\u002E\u0031\u002F\u0066\u0069\u0072\u0065\u0062\u0061\u0073\u0065\u002D\u0061\u0070\u0070\u002E\u006A\u0073";import{getFirestore,collection,doc,setDoc,onSnapshot,deleteDoc,getDoc,getDocs,query,writeBatch}from"\u0068\u0074\u0074\u0070\u0073\u003A\u002F\u002F\u0077\u0077\u0077\u002E\u0067\u0073\u0074\u0061\u0074\u0069\u0063\u002E\u0063\u006F\u006D\u002F\u0066\u0069\u0072\u0065\u0062\u0061\u0073\u0065\u006A\u0073\u002F\u0031\u0030\u002E\u0037\u002E\u0031\u002F\u0066\u0069\u0072\u0065\u0062\u0061\u0073\u0065\u002D\u0066\u0069\u0072\u0065\u0073\u0074\u006F\u0072\u0065\u002E\u006A\u0073";var _0x_0xb88=(107467^107466)+(210678^210675);const firebaseConfig={'\u0061\u0070\u0069\u004B\u0065\u0079':"AIzaSyCqHy9ny-hi_92Rem_Y7QQlhGVCM_7yEcQ","authDomain":"\u0061\u0073\u0069\u0073\u0074\u0065\u006E\u0063\u0069\u0061\u002D\u0038\u0030\u0039\u0061\u0061\u002E\u0066\u0069\u0072\u0065\u0062\u0061\u0073\u0065\u0061\u0070\u0070\u002E\u0063\u006F\u006D","projectId":"asistencia-809aa","storageBucket":"asistencia-809aa.firebasestorage.app","messagingSenderId":"1084715358166",'\u0061\u0070\u0070\u0049\u0064':"1:1084715358166:web:a4ba59e2286ab4be54b677"};_0x_0xb88=848301^848292;const app=initializeApp(firebaseConfig);const db=getFirestore(app);let _0x2_0xc53;const registroForm=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("mroFortsiger".split("").reverse().join(""));_0x2_0xc53=(928150^928159)+(861667^861664);if(registroForm){registroForm['\u0061\u0064\u0064\u0045\u0076\u0065\u006E\u0074\u004C\u0069\u0073\u0074\u0065\u006E\u0065\u0072']("\u0073\u0075\u0062\u006D\u0069\u0074",async e=>{e['\u0070\u0072\u0065\u0076\u0065\u006E\u0074\u0044\u0065\u0066\u0061\u0075\u006C\u0074']();var _0x0eb=(891802^891802)+(481125^481121);const dni=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("ind".split("").reverse().join(""))['\u0076\u0061\u006C\u0075\u0065'];_0x0eb=(172998^172995)+(632211^632213);let _0x1ec;const datos={'\u0064\u006E\u0069':dni,'\u006E\u006F\u006D\u0062\u0072\u0065\u0073':document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u006E\u006F\u006D\u0062\u0072\u0065\u0073")['\u0076\u0061\u006C\u0075\u0065'],'\u0067\u0072\u0061\u0064\u006F':document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("odarg".split("").reverse().join(""))['\u0076\u0061\u006C\u0075\u0065'],'\u0073\u0065\u0063\u0063\u0069\u006F\u006E':document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("noicces".split("").reverse().join(""))['\u0076\u0061\u006C\u0075\u0065'],'\u0074\u0065\u006C\u0065\u0066\u006F\u006E\u006F':document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0074\u0065\u006C\u0065\u0066\u006F\u006E\u006F")['\u0076\u0061\u006C\u0075\u0065']};_0x1ec=850024^850024;try{await setDoc(doc(db,"sonmula".split("").reverse().join(""),dni),datos);alert("\u0041\u006C\u0075\u006D\u006E\u006F\u0020\u0067\u0075\u0061\u0072\u0064\u0061\u0064\u006F\u0020\u0063\u006F\u006E\u0020\u00E9\u0078\u0069\u0074\u006F");window['\u0067\u0065\u006E\u0065\u0072\u0061\u0072\u0053\u006F\u006C\u006F\u0051\u0052'](dni);registroForm['\u0072\u0065\u0073\u0065\u0074']();}catch(error){alert(" :radraug la rorrE".split("").reverse().join("")+error['\u006D\u0065\u0073\u0073\u0061\u0067\u0065']);}});}window['\u0063\u0061\u006D\u0062\u0069\u0061\u0072\u0046\u0065\u0063\u0068\u0061\u0041\u0073\u0069\u0073\u0074\u0065\u006E\u0063\u0069\u0061']=nuevaFecha=>{console['\u006C\u006F\u0067'](":a atsiv odnaibmaC".split("").reverse().join(""),nuevaFecha);iniciarControlAsistencia(nuevaFecha);};window['\u0067\u0065\u006E\u0065\u0072\u0061\u0072\u0053\u006F\u006C\u006F\u0051\u0052']=async dni=>{const qrDiv=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0071\u0072\u0063\u006F\u0064\u0065");var _0x58g=(349450^349442)+(302704^302713);const container=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0071\u0072\u0043\u006F\u006E\u0074\u0061\u0069\u006E\u0065\u0072");_0x58g='\u006E\u0070\u0069\u0066\u006F\u0068';const txtNombres=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0073\u006F\u006C\u006F\u004E\u006F\u006D\u0062\u0072\u0065\u0073\u004D\u006F\u0073\u0074\u0072\u0061\u0064\u006F");const txtApellidos=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0073\u006F\u006C\u006F\u0041\u0070\u0065\u006C\u006C\u0069\u0064\u006F\u0073\u004D\u006F\u0073\u0074\u0072\u0061\u0064\u006F");var _0xdec=(424392^424398)+(260602^260605);const txtDni=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0064\u006E\u0069\u004D\u006F\u0073\u0074\u0072\u0061\u0064\u006F");_0xdec=290258^290261;const txtGradoSec=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0067\u0072\u0061\u0064\u006F\u0053\u0065\u0063\u0063\u0069\u006F\u006E\u004D\u006F\u0073\u0074\u0072\u0061\u0064\u006F");qrDiv['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']="\u0047\u0065\u006E\u0065\u0072\u0061\u006E\u0064\u006F\u002E\u002E\u002E";try{let _0x78b;const docRef=doc(db,"\u0061\u006C\u0075\u006D\u006E\u006F\u0073",dni);_0x78b=(725230^725227)+(625030^625027);const docSnap=await getDoc(docRef);if(docSnap['\u0065\u0078\u0069\u0073\u0074\u0073']()){let _0xc1g;const datos=docSnap['\u0064\u0061\u0074\u0061']();_0xc1g=(449381^449379)+(512180^512182);qrDiv['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']="";new QRCode(qrDiv,{'\u0074\u0065\u0078\u0074':dni,'\u0077\u0069\u0064\u0074\u0068':160,"height":160});var _0x3dffba=(613787^613784)+(667053^667048);const palabras=(datos['\u006E\u006F\u006D\u0062\u0072\u0065\u0073']||"")['\u0074\u0072\u0069\u006D']()['\u0073\u0070\u006C\u0069\u0074']("\u0020");_0x3dffba=(867986^867984)+(887169^887169);let _0x1af5ce;let nombresArr="";_0x1af5ce="dieelg".split("").reverse().join("");let apellidosArr="";if(palabras['\u006C\u0065\u006E\u0067\u0074\u0068']>=(662365^662366)){nombresArr=palabras['\u0073\u006C\u0069\u0063\u0065'](259222^259222,889697^889699)['\u006A\u006F\u0069\u006E']("\u0020");apellidosArr=palabras['\u0073\u006C\u0069\u0063\u0065'](632240^632242)['\u006A\u006F\u0069\u006E']("\u0020");}else{nombresArr=palabras[354240^354240]||"";apellidosArr=palabras['\u0073\u006C\u0069\u0063\u0065'](452560^452561)['\u006A\u006F\u0069\u006E']("\u0020")||"";}txtNombres['\u0069\u006E\u006E\u0065\u0072\u0054\u0065\u0078\u0074']=nombresArr['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']();txtApellidos['\u0069\u006E\u006E\u0065\u0072\u0054\u0065\u0078\u0074']=apellidosArr['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']();txtDni['\u0069\u006E\u006E\u0065\u0072\u0054\u0065\u0078\u0074']="\u0044\u004E\u0049\u003A\u0020"+datos['\u0064\u006E\u0069'];txtGradoSec['\u0069\u006E\u006E\u0065\u0072\u0054\u0065\u0078\u0074']=`${datos['\u0067\u0072\u0061\u0064\u006F']||"\u002D"}° "${datos['\u0073\u0065\u0063\u0063\u0069\u006F\u006E']||"\u002D"}"`['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']();setTimeout(()=>{if(typeof window['\u0061\u006A\u0075\u0073\u0074\u0061\u0072\u0054\u0065\u0078\u0074\u006F\u0044\u0069\u006E\u00E1\u006D\u0069\u0063\u006F']==="\u0066\u0075\u006E\u0063\u0074\u0069\u006F\u006E"){window['\u0061\u006A\u0075\u0073\u0074\u0061\u0072\u0054\u0065\u0078\u0074\u006F\u0044\u0069\u006E\u00E1\u006D\u0069\u0063\u006F']("\u0073\u006F\u006C\u006F\u004E\u006F\u006D\u0062\u0072\u0065\u0073\u004D\u006F\u0073\u0074\u0072\u0061\u0064\u006F");window['\u0061\u006A\u0075\u0073\u0074\u0061\u0072\u0054\u0065\u0078\u0074\u006F\u0044\u0069\u006E\u00E1\u006D\u0069\u0063\u006F']("odartsoMsodillepAolos".split("").reverse().join(""));}},979488^979524);window['\u006D\u006F\u0073\u0074\u0072\u0061\u0072\u0053\u0065\u0063\u0063\u0069\u006F\u006E']("\u0072\u0065\u0067\u0069\u0073\u0074\u0072\u006F");container['\u0063\u006C\u0061\u0073\u0073\u004C\u0069\u0073\u0074']['\u0072\u0065\u006D\u006F\u0076\u0065']("neddih".split("").reverse().join(""));window['\u0073\u0063\u0072\u006F\u006C\u006C\u0054\u006F']({"top":0,'\u0062\u0065\u0068\u0061\u0076\u0069\u006F\u0072':'smooth'});}else{alert("\u004E\u006F\u0020\u0073\u0065\u0020\u0065\u006E\u0063\u006F\u006E\u0074\u0072\u00F3\u0020\u0065\u006C\u0020\u0061\u006C\u0075\u006D\u006E\u006F\u0020\u0065\u006E\u0020\u006C\u0061\u0020\u0062\u0061\u0073\u0065\u0020\u0064\u0065\u0020\u0064\u0061\u0074\u006F\u0073\u002E");}}catch(error){console['\u0065\u0072\u0072\u006F\u0072']("\u0045\u0072\u0072\u006F\u0072\u0020\u0061\u006C\u0020\u0067\u0065\u006E\u0065\u0072\u0061\u0072\u0020\u0051\u0052\u003A",error);}};window['\u0063\u0065\u0072\u0072\u0061\u0072\u0044\u0069\u0061']=async()=>{const hoy=new Date()['\u0074\u006F\u004C\u006F\u0063\u0061\u006C\u0065\u0044\u0061\u0074\u0065\u0053\u0074\u0072\u0069\u006E\u0067']("\u0065\u006E\u002D\u0043\u0041");if(!confirm("?serdap sol a ATLAF ed senoicacifiton raivne y a\xEDd razilaniF\xBF".split("").reverse().join("")))return;try{let _0xd8f17f;const batch=writeBatch(db);_0xd8f17f=(703099^703100)+(943580^943572);let _0x2c6d;const snapAlumnos=await getDocs(collection(db,"\u0061\u006C\u0075\u006D\u006E\u006F\u0073"));_0x2c6d=731044^731045;const snapAsistencia=await getDocs(collection(db,"aicnetsisa".split("").reverse().join(""),hoy,"\u0072\u0065\u0067\u0069\u0073\u0074\u0072\u006F\u0073"));let _0x42389e;const asistieronDni=new Set();_0x42389e=(282187^282178)+(947268^947266);snapAsistencia['\u0066\u006F\u0072\u0045\u0061\u0063\u0068'](docSnap=>asistieronDni['\u0061\u0064\u0064'](docSnap['\u0069\u0064']));var _0xad13d=(829280^829281)+(419647^419644);let contFaltas=609062^609062;_0xad13d=(989847^989840)+(566530^566535);for(const docAlumno of snapAlumnos['\u0064\u006F\u0063\u0073']){let _0x1b4ec;const dni=docAlumno['\u0069\u0064'];_0x1b4ec=691184^691193;let _0x9596b;const datosAlu=docAlumno['\u0064\u0061\u0074\u0061']();_0x9596b=(578258^578257)+(186784^186784);if(!asistieronDni['\u0068\u0061\u0073'](dni)){contFaltas++;var _0x88eddd=(811207^811214)+(321911^321919);const refFalta=doc(db,"\u0061\u0073\u0069\u0073\u0074\u0065\u006E\u0063\u0069\u0061",hoy,"sortsiger".split("").reverse().join(""),dni);_0x88eddd='\u0069\u0063\u006D\u0067\u0061\u0071';batch['\u0073\u0065\u0074'](refFalta,{"nombres":datosAlu['\u006E\u006F\u006D\u0062\u0072\u0065\u0073'],'\u0068\u006F\u0072\u0061':"--:--:--",'\u0065\u0073\u0074\u0061\u0064\u006F':"\u0046\u0061\u006C\u0074\u00F3","fecha":hoy},{'\u006D\u0065\u0072\u0067\u0065':!![]});if(datosAlu['\u0074\u0065\u006C\u0065\u0066\u006F\u006E\u006F']){var _0xedef=(151373^151369)+(660148^660151);const mensajeFalta=`*INASISTENCIA*\n\nEstimado apoderado, se le informa que el estudiante *${datosAlu['\u006E\u006F\u006D\u0062\u0072\u0065\u0073']['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']()}* no ha registrado su asistencia el día de hoy (${hoy}).\n\n_I.E. Horacio Zeballos Gámez_`;_0xedef=(642116^642116)+(624625^624628);await window['\u0065\u006E\u0076\u0069\u0061\u0072\u004E\u006F\u0074\u0069\u0066\u0069\u0063\u0061\u0063\u0069\u006F\u006E\u0055\u006C\u0074\u0072\u0061\u004D\u0073\u0067'](datosAlu['\u0074\u0065\u006C\u0065\u0066\u006F\u006E\u006F'],datosAlu['\u006E\u006F\u006D\u0062\u0072\u0065\u0073'],"\xF3tlaF".split("").reverse().join(""),mensajeFalta);}}}await batch['\u0063\u006F\u006D\u006D\u0069\u0074']();alert(`Éxito: Se registraron ${contFaltas} faltas.`);}catch(error){console['\u0065\u0072\u0072\u006F\u0072'](":aiDrarrec ne rorrE".split("").reverse().join(""),error);alert("\u0045\u0072\u0072\u006F\u0072\u003A\u0020"+error['\u006D\u0065\u0073\u0073\u0061\u0067\u0065']);}};const iniciarControlAsistencia=(fechaManual=null)=>{let _0xf48ad;const hoy=fechaManual||new Date()['\u0074\u006F\u004C\u006F\u0063\u0061\u006C\u0065\u0044\u0061\u0074\u0065\u0053\u0074\u0072\u0069\u006E\u0067']("\u0065\u006E\u002D\u0043\u0041");_0xf48ad=(758083^758083)+(620246^620244);const contenedorAsis=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("yoHaicnetsisa".split("").reverse().join(""));if(!contenedorAsis)return;onSnapshot(collection(db,"aicnetsisa".split("").reverse().join(""),hoy,"sortsiger".split("").reverse().join("")),async snapshot=>{contenedorAsis['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']="";if(snapshot['\u0065\u006D\u0070\u0074\u0079']){contenedorAsis['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']=`<div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">No hay ingresos registrados para esta fecha (${hoy})...</div>`;return;}var _0x9d7aab=(821046^821046)+(434536^434529);const registros=[];_0x9d7aab=230168^230172;for(const docSnap of snapshot['\u0064\u006F\u0063\u0073']){const d=docSnap['\u0064\u0061\u0074\u0061']();let _0xb90g;const dni=docSnap['\u0069\u0064'];_0xb90g=161256^161262;const docAlu=await getDoc(doc(db,"\u0061\u006C\u0075\u006D\u006E\u006F\u0073",dni));const aluData=docAlu['\u0065\u0078\u0069\u0073\u0074\u0073']()?docAlu['\u0064\u0061\u0074\u0061']():{'\u0067\u0072\u0061\u0064\u006F':"\u003F",'\u0073\u0065\u0063\u0063\u0069\u006F\u006E':"\u003F"};registros['\u0070\u0075\u0073\u0068']({...d,'\u0064\u006E\u0069':dni,"aula":`${aluData['\u0067\u0072\u0061\u0064\u006F']}° "${aluData['\u0073\u0065\u0063\u0063\u0069\u006F\u006E']}"`['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']()});}const grupos=registros['\u0072\u0065\u0064\u0075\u0063\u0065']((acc,curr)=>{if(!acc[curr['\u0061\u0075\u006C\u0061']])acc[curr['\u0061\u0075\u006C\u0061']]=[];acc[curr['\u0061\u0075\u006C\u0061']]['\u0070\u0075\u0073\u0068'](curr);return acc;},{});Object['\u006B\u0065\u0079\u0073'](grupos)['\u0073\u006F\u0072\u0074']()['\u0066\u006F\u0072\u0045\u0061\u0063\u0068'](aula=>{var _0xc0g8af=(148129^148137)+(662282^662282);const sectionDiv=document['\u0063\u0072\u0065\u0061\u0074\u0065\u0045\u006C\u0065\u006D\u0065\u006E\u0074']("vid".split("").reverse().join(""));_0xc0g8af='\u006F\u0069\u006B\u006B\u006D\u0068';sectionDiv['\u0063\u006C\u0061\u0073\u0073\u004E\u0061\u006D\u0065']="\u006D\u0062\u002D\u0038\u0020\u006F\u0076\u0065\u0072\u0066\u006C\u006F\u0077\u002D\u0068\u0069\u0064\u0064\u0065\u006E\u0020\u0072\u006F\u0075\u006E\u0064\u0065\u0064\u002D\u0078\u006C\u0020\u0062\u006F\u0072\u0064\u0065\u0072\u0020\u0062\u006F\u0072\u0064\u0065\u0072\u002D\u0073\u006C\u0061\u0074\u0065\u002D\u0032\u0030\u0030\u0020\u0073\u0068\u0061\u0064\u006F\u0077\u002D\u0073\u006D";sectionDiv['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']=`
                 <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex justify-between items-center">
                     <h3 class="font-black text-green-800 text-sm">📍 SECCIÓN: ${aula}</h3>
                     <span class="bg-green-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
-                        ${grupos[aula].length} PRESENTES
+                        ${grupos[aula]['\u006C\u0065\u006E\u0067\u0074\u0068']} PRESENTES
                     </span>
                 </div>
                 <table class="w-full text-left border-collapse">
                     <tbody class="bg-white">
-                        ${grupos[aula].map(reg => {
-                            const color = reg.estado === "Puntual" ? "bg-green-100 text-green-700" : 
-                                          reg.estado === "Tardanza" ? "bg-yellow-100 text-yellow-700" : 
-                                          reg.estado.includes("Justificada") ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700";
-                            
-                            return `
+                        ${grupos[aula]['\u006D\u0061\u0070'](reg=>{const color=reg['\u0065\u0073\u0074\u0061\u0064\u006F']==="lautnuP".split("").reverse().join("")?"\u0062\u0067\u002D\u0067\u0072\u0065\u0065\u006E\u002D\u0031\u0030\u0030\u0020\u0074\u0065\u0078\u0074\u002D\u0067\u0072\u0065\u0065\u006E\u002D\u0037\u0030\u0030":reg['\u0065\u0073\u0074\u0061\u0064\u006F']==="\u0054\u0061\u0072\u0064\u0061\u006E\u007A\u0061"?"\u0062\u0067\u002D\u0079\u0065\u006C\u006C\u006F\u0077\u002D\u0031\u0030\u0030\u0020\u0074\u0065\u0078\u0074\u002D\u0079\u0065\u006C\u006C\u006F\u0077\u002D\u0037\u0030\u0030":reg['\u0065\u0073\u0074\u0061\u0064\u006F']['\u0069\u006E\u0063\u006C\u0075\u0064\u0065\u0073']("\u004A\u0075\u0073\u0074\u0069\u0066\u0069\u0063\u0061\u0064\u0061")?"007-eulb-txet 001-eulb-gb".split("").reverse().join(""):"\u0062\u0067\u002D\u0072\u0065\u0064\u002D\u0031\u0030\u0030\u0020\u0074\u0065\u0078\u0074\u002D\u0072\u0065\u0064\u002D\u0037\u0030\u0030";return`
                                 <tr class="border-b last:border-0 hover:bg-slate-50 transition">
-                                    <td class="p-3 font-bold text-green-700 w-20 text-sm">${reg.hora || '--:--'}</td>
+                                    <td class="p-3 font-bold text-green-700 w-20 text-sm">${reg['\u0068\u006F\u0072\u0061']||"--:--".split("").reverse().join("")}</td>
                                     <td class="p-3">
-                                        <div class="font-bold text-slate-700 text-sm">${reg.nombres}</div>
-                                        <div class="text-[9px] text-slate-400 font-bold uppercase">DNI: ${reg.dni}</div>
+                                        <div class="font-bold text-slate-700 text-sm">${reg['\u006E\u006F\u006D\u0062\u0072\u0065\u0073']}</div>
+                                        <div class="text-[9px] text-slate-400 font-bold uppercase">DNI: ${reg['\u0064\u006E\u0069']}</div>
                                     </td>
                                     <td class="p-3 w-32">
                                         <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${color}">
-                                            ${reg.estado.toUpperCase()}
+                                            ${reg['\u0065\u0073\u0074\u0061\u0064\u006F']['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']()}
                                         </span>
                                     </td>
                                     <td class="p-3 text-right w-20">
-                                        <button onclick="window.justificarFalta('${reg.dni}', '${reg.nombres}')" 
+                                        <button onclick="window.justificarFalta('${reg['\u0064\u006E\u0069']}', '${reg['\u006E\u006F\u006D\u0062\u0072\u0065\u0073']}')" 
                                                 class="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-tighter">
                                             EDITAR
                                         </button>
                                     </td>
                                 </tr>
-                            `;
-                        }).join('')}
+                            `;})['\u006A\u006F\u0069\u006E']('')}
                     </tbody>
                 </table>
-            `;
-            contenedorAsis.appendChild(sectionDiv);
-        });
-    });
-};
-
-// Función auxiliar para dar un respiro a la API
-const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-window.escanearYRegistrarMasivo = async () => {
-    const fileInput = document.getElementById('fotoMasiva');
-    const log = document.getElementById('logRegistro');
-    const btn = document.getElementById('btnMasivo');
-    
-    const gradoDefault = document.getElementById('grado').value.trim();
-    const seccionDefault = document.getElementById('seccion').value.trim().toUpperCase();
-
-    const archivo = fileInput.files[0];
-    if (!archivo) return alert("Selecciona un archivo Excel.");
-
-    log.classList.remove('hidden');
-    log.innerHTML = `🚀 Iniciando procesamiento masivo institucional...<br>`;
-    btn.disabled = true;
-
-    try {
-        let estudiantesParaProcesar = [];
-
-        if (archivo.name.endsWith('.xlsx') || archivo.name.endsWith('.xls')) {
-            const data = await archivo.arrayBuffer();
-            const libro = XLSX.read(data, { type: 'array' });
-            const hoja = libro.Sheets[libro.SheetNames[0]];
-            const filasRaw = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: "" });
-            
-            log.innerHTML += "📊 Analizando estructura de datos escolar...<br>";
-
-            estudiantesParaProcesar = filasRaw.map(fila => {
-                const valores = fila.map(v => String(v).trim());
-                return {
-                    dni: valores.find(v => /^\d{8}$/.test(v)),
-                    nombreExcel: valores.find(v => v.length > 10 && !/^\d+$/.test(v)),
-                    telefono: valores.find(v => /^\d{9}$/.test(v)),
-                    grado: valores.find(v => /^[1-5]$/.test(v)) || gradoDefault,
-                    seccion: valores.find(v => /^[A-Fa-f]$/.test(v))?.toUpperCase() || seccionDefault
-                };
-            }).filter(est => est.dni); 
-        } else {
-            return alert("Por favor use archivos Excel (.xlsx o .xls).");
-        }
-
-        const total = estudiantesParaProcesar.length;
-        log.innerHTML += `✅ <b>Total identificado: ${total} alumnos.</b><hr class='border-slate-700 my-2'>`;
-
-        // USAMOS UN BUCLE CON ÍNDICE PARA EL CONTEO
-        for (let i = 0; i < total; i++) {
-            const est = estudiantesParaProcesar[i];
-            const numActual = i + 1; // El número de alumno actual
-
-            // Mostramos el conteo en el log: [1 de 50]
-            log.innerHTML += `<span class="text-blue-400">[${numActual}/${total}]</span> 🔍 ${est.dni}... `;
-            
-            let nombreFinal = est.nombreExcel || "PENDIENTE";
-
-            try {
-                // Delay para no saturar la API (0.6 seg)
-                await new Promise(r => setTimeout(r, 600)); 
-                const apiKey = "sk_14665.dSb1iTSCRxookfSigq90nJUIs4udOhuC"; 
-                const response = await fetch(`https://api.decolecta.com/v1/dni/${est.dni}`, {
-                    method: "GET",
-                    headers: { "Authorization": `Bearer ${apiKey}`, "X-Requested-With": "XMLHttpRequest" }
-                });
-                const res = await response.json();
-                if (res.success && res.data) {
-                    nombreFinal = res.data.nombre_completo || `${res.data.nombres} ${res.data.apellido_paterno} ${res.data.apellido_materno}`;
-                }
-            } catch (e) { console.warn("Usando nombre local para:", est.dni); }
-
-            // GUARDADO EN FIREBASE
-            await setDoc(doc(db, "alumnos", String(est.dni)), {
-                dni: String(est.dni),
-                nombres: nombreFinal.toUpperCase(),
-                grado: String(est.grado),
-                seccion: String(est.seccion),
-                telefono: String(est.telefono || ""),
-                fechaRegistro: new Date().toLocaleDateString()
-            }, { merge: true });
-
-            log.innerHTML += `<span class="text-green-400">OK ✅</span><br>`;
-            
-            // Auto-scroll para seguir el progreso
-            log.scrollTop = log.scrollHeight;
-        }
-
-        alert(`✅ Éxito. Se procesaron los ${total} alumnos.`);
-        if(typeof window.cargarBloques === 'function') await window.cargarBloques();
-
-    } catch (e) {
-        log.innerHTML += `<br><span class="text-red-500">❌ Error: ${e.message}</span>`;
-    } finally {
-        btn.disabled = false;
-    }
-};
-
-window.consultarDNI = async () => {
-    const dni = document.getElementById('dni').value;
-    const inputNombre = document.getElementById('nombres');
-    const btn = document.getElementById('btnBuscarDNI');
-
-    if (dni.length !== 8) return alert("DNI inválido");
-
-    btn.disabled = true;
-    btn.innerHTML = "⏳";
-
-    try {
-        const token = "75881d0ad45fc822d207432641eb46af3a40a7aaadb9b7601346298f00939f8a"; 
-
-        const response = await fetch("https://apiperu.dev/api/dni", {
-            method: "POST",
-            headers: {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`
-            },
-            body: JSON.stringify({ dni: dni })
-        });
-
-        const res = await response.json();
-
-        if (res.success && res.data) {
-            // Extraemos los campos por separado para darles el orden: NOMBRE APELLIDOS
-            const nombres = res.data.nombres;
-            const apePaterno = res.data.apellido_paterno;
-            const apeMaterno = res.data.apellido_materno;
-
-            // Concatenamos en el orden deseado y convertimos a Mayúsculas
-            inputNombre.value = `${nombres} ${apePaterno} ${apeMaterno}`.toUpperCase();
-            
-        } else {
-            throw new Error("No encontrado");
-        }
-
-    } catch (error) {
-        console.error("Error:", error);
-        alert("Servicio temporalmente fuera de línea. Ingrese el nombre manualmente.");
-        inputNombre.disabled = false;
-        inputNombre.focus();
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = "🔍";
-    }
-};
-
-window.imprimirCarnet = async (dni) => {
-    try {
-        const docAlu = await getDoc(doc(db, "alumnos", dni));
-        if (!docAlu.exists()) return alert("Error al recuperar datos");
-        
-        const a = docAlu.data();
-        
-        // Lógica de separación de nombres y apellidos
-        const palabras = (a.nombres || "").trim().split(' ');
-        let nom = "";
-        let ape = "";
-        if (palabras.length >= 3) {
-            nom = palabras.slice(0, 2).join(' ');
-            ape = palabras.slice(2).join(' ');
-        } else {
-            nom = palabras[0] || "";
-            ape = palabras.slice(1).join(' ') || "";
-        }
-
-        const ventana = window.open('', '', 'height=600,width=800');
-        ventana.document.write(`
+            `;contenedorAsis['\u0061\u0070\u0070\u0065\u006E\u0064\u0043\u0068\u0069\u006C\u0064'](sectionDiv);});});};let _0x4_0xbb2;const esperar=ms=>new Promise(resolve=>setTimeout(resolve,ms));_0x4_0xbb2='\u0062\u0064\u006A\u0067\u006D\u0068';window['\u0065\u0073\u0063\u0061\u006E\u0065\u0061\u0072\u0059\u0052\u0065\u0067\u0069\u0073\u0074\u0072\u0061\u0072\u004D\u0061\u0073\u0069\u0076\u006F']=async()=>{const fileInput=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0066\u006F\u0074\u006F\u004D\u0061\u0073\u0069\u0076\u0061");var _0x945c=(507214^507211)+(767542^767541);const log=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("ortsigeRgol".split("").reverse().join(""));_0x945c='\u006D\u0065\u0071\u0068\u0067\u006C';const btn=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0062\u0074\u006E\u004D\u0061\u0073\u0069\u0076\u006F");var _0x9bed=(746998^746996)+(572837^572832);const gradoDefault=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("odarg".split("").reverse().join(""))['\u0076\u0061\u006C\u0075\u0065']['\u0074\u0072\u0069\u006D']();_0x9bed=(333984^333984)+(315430^315429);var _0x88e6ee=(379019^379010)+(779260^779253);const seccionDefault=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0073\u0065\u0063\u0063\u0069\u006F\u006E")['\u0076\u0061\u006C\u0075\u0065']['\u0074\u0072\u0069\u006D']()['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']();_0x88e6ee=(141980^141982)+(541715^541713);var _0x3b75ba=(482047^482038)+(123687^123685);const archivo=fileInput['\u0066\u0069\u006C\u0065\u0073'][712063^712063];_0x3b75ba=(698185^698186)+(478077^478077);if(!archivo)return alert(".lecxE ovihcra nu anoicceleS".split("").reverse().join(""));log['\u0063\u006C\u0061\u0073\u0073\u004C\u0069\u0073\u0074']['\u0072\u0065\u006D\u006F\u0076\u0065']("\u0068\u0069\u0064\u0064\u0065\u006E");log['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']=`🚀 Iniciando procesamiento masivo institucional...<br>`;btn['\u0064\u0069\u0073\u0061\u0062\u006C\u0065\u0064']=!![];try{var _0x5_0xfa9=(148056^148062)+(410474^410467);let estudiantesParaProcesar=[];_0x5_0xfa9="mcbgbh".split("").reverse().join("");if(archivo['\u006E\u0061\u006D\u0065']['\u0065\u006E\u0064\u0073\u0057\u0069\u0074\u0068']("\u002E\u0078\u006C\u0073\u0078")||archivo['\u006E\u0061\u006D\u0065']['\u0065\u006E\u0064\u0073\u0057\u0069\u0074\u0068']("slx.".split("").reverse().join(""))){const data=await archivo['\u0061\u0072\u0072\u0061\u0079\u0042\u0075\u0066\u0066\u0065\u0072']();var _0x4362dd=(397736^397737)+(835885^835884);const libro=XLSX['\u0072\u0065\u0061\u0064'](data,{"type":'array'});_0x4362dd=(351755^351758)+(133352^133359);const hoja=libro['\u0053\u0068\u0065\u0065\u0074\u0073'][libro['\u0053\u0068\u0065\u0065\u0074\u004E\u0061\u006D\u0065\u0073'][730770^730770]];var _0x12d5b=(622233^622235)+(192280^192280);const filasRaw=XLSX['\u0075\u0074\u0069\u006C\u0073']['\u0073\u0068\u0065\u0065\u0074\u005F\u0074\u006F\u005F\u006A\u0073\u006F\u006E'](hoja,{'\u0068\u0065\u0061\u0064\u0065\u0072':1,'\u0064\u0065\u0066\u0076\u0061\u006C':""});_0x12d5b="jjpgij".split("").reverse().join("");log['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']+=">rb<...ralocse sotad ed arutcurtse odnazilanA \uDCCA\uD83D".split("").reverse().join("");estudiantesParaProcesar=filasRaw['\u006D\u0061\u0070'](fila=>{var _0x6e44d=(200854^200851)+(806066^806074);const valores=fila['\u006D\u0061\u0070'](v=>String(v)['\u0074\u0072\u0069\u006D']());_0x6e44d=699200^699201;return{"dni":valores['\u0066\u0069\u006E\u0064'](v=>new RegExp('\u005E\u005C\u0064\u007B\u0038\u007D\u0024',"")['\u0074\u0065\u0073\u0074'](v)),'\u006E\u006F\u006D\u0062\u0072\u0065\u0045\u0078\u0063\u0065\u006C':valores['\u0066\u0069\u006E\u0064'](v=>v['\u006C\u0065\u006E\u0067\u0074\u0068']>(375020^375014)&&!new RegExp('\u005E\u005C\u0064\u002B\u0024',"")['\u0074\u0065\u0073\u0074'](v)),'\u0074\u0065\u006C\u0065\u0066\u006F\u006E\u006F':valores['\u0066\u0069\u006E\u0064'](v=>new RegExp("$}9{d\\^".split("").reverse().join(""),"")['\u0074\u0065\u0073\u0074'](v)),'\u0067\u0072\u0061\u0064\u006F':valores['\u0066\u0069\u006E\u0064'](v=>new RegExp('\u005E\u005B\u0031\u002D\u0035\u005D\u0024',"")['\u0074\u0065\u0073\u0074'](v))||gradoDefault,"seccion":valores['\u0066\u0069\u006E\u0064'](v=>new RegExp('\u005E\u005B\u0041\u002D\u0046\u0061\u002D\u0066\u005D\u0024',"")['\u0074\u0065\u0073\u0074'](v))?.toUpperCase()||seccionDefault};})['\u0066\u0069\u006C\u0074\u0065\u0072'](est=>est['\u0064\u006E\u0069']);}else{return alert("\u0050\u006F\u0072\u0020\u0066\u0061\u0076\u006F\u0072\u0020\u0075\u0073\u0065\u0020\u0061\u0072\u0063\u0068\u0069\u0076\u006F\u0073\u0020\u0045\u0078\u0063\u0065\u006C\u0020\u0028\u002E\u0078\u006C\u0073\u0078\u0020\u006F\u0020\u002E\u0078\u006C\u0073\u0029\u002E");}var _0x59cda=(922368^922375)+(337727^337720);const total=estudiantesParaProcesar['\u006C\u0065\u006E\u0067\u0074\u0068'];_0x59cda=(833258^833258)+(733726^733719);log['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']+=`✅ <b>Total identificado: ${total} alumnos.</b><hr class='border-slate-700 my-2'>`;for(let i=191670^191670;i<total;i++){const est=estudiantesParaProcesar[i];const numActual=i+(287528^287529);log['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']+=`<span class="text-blue-400">[${numActual}/${total}]</span> 🔍 ${est['\u0064\u006E\u0069']}... `;let _0x575c;let nombreFinal=est['\u006E\u006F\u006D\u0062\u0072\u0065\u0045\u0078\u0063\u0065\u006C']||"\u0050\u0045\u004E\u0044\u0049\u0045\u004E\u0054\u0045";_0x575c=(248392^248398)+(994526^994527);try{await new Promise(r=>setTimeout(r,419410^418826));var _0x696ag=(929859^929858)+(220524^220524);const apiKey="\u0073\u006B\u005F\u0031\u0034\u0036\u0036\u0035\u002E\u0064\u0053\u0062\u0031\u0069\u0054\u0053\u0043\u0052\u0078\u006F\u006F\u006B\u0066\u0053\u0069\u0067\u0071\u0039\u0030\u006E\u004A\u0055\u0049\u0073\u0034\u0075\u0064\u004F\u0068\u0075\u0043";_0x696ag=(332651^332652)+(712609^712611);var _0x6_0x354=(837877^837875)+(229793^229792);const response=await fetch(`https://api.decolecta.com/v1/dni/${est['\u0064\u006E\u0069']}`,{"method":"\u0047\u0045\u0054",'\u0068\u0065\u0061\u0064\u0065\u0072\u0073':{"\u0041\u0075\u0074\u0068\u006F\u0072\u0069\u007A\u0061\u0074\u0069\u006F\u006E":`Bearer ${apiKey}`,"X-Requested-With":"\u0058\u004D\u004C\u0048\u0074\u0074\u0070\u0052\u0065\u0071\u0075\u0065\u0073\u0074"}});_0x6_0x354="eqfkhh".split("").reverse().join("");let _0x3c7f4a;const res=await response['\u006A\u0073\u006F\u006E']();_0x3c7f4a="fghnqg".split("").reverse().join("");if(res['\u0073\u0075\u0063\u0063\u0065\u0073\u0073']&&res['\u0064\u0061\u0074\u0061']){nombreFinal=res['\u0064\u0061\u0074\u0061']['\u006E\u006F\u006D\u0062\u0072\u0065\u005F\u0063\u006F\u006D\u0070\u006C\u0065\u0074\u006F']||`${res['\u0064\u0061\u0074\u0061']['\u006E\u006F\u006D\u0062\u0072\u0065\u0073']} ${res['\u0064\u0061\u0074\u0061']['\u0061\u0070\u0065\u006C\u006C\u0069\u0064\u006F\u005F\u0070\u0061\u0074\u0065\u0072\u006E\u006F']} ${res['\u0064\u0061\u0074\u0061']['\u0061\u0070\u0065\u006C\u006C\u0069\u0064\u006F\u005F\u006D\u0061\u0074\u0065\u0072\u006E\u006F']}`;}}catch(e){console['\u0077\u0061\u0072\u006E'](":arap lacol erbmon odnasU".split("").reverse().join(""),est['\u0064\u006E\u0069']);}await setDoc(doc(db,"\u0061\u006C\u0075\u006D\u006E\u006F\u0073",String(est['\u0064\u006E\u0069'])),{'\u0064\u006E\u0069':String(est['\u0064\u006E\u0069']),'\u006E\u006F\u006D\u0062\u0072\u0065\u0073':nombreFinal['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065'](),'\u0067\u0072\u0061\u0064\u006F':String(est['\u0067\u0072\u0061\u0064\u006F']),'\u0073\u0065\u0063\u0063\u0069\u006F\u006E':String(est['\u0073\u0065\u0063\u0063\u0069\u006F\u006E']),'\u0074\u0065\u006C\u0065\u0066\u006F\u006E\u006F':String(est['\u0074\u0065\u006C\u0065\u0066\u006F\u006E\u006F']||""),'\u0066\u0065\u0063\u0068\u0061\u0052\u0065\u0067\u0069\u0073\u0074\u0072\u006F':new Date()['\u0074\u006F\u004C\u006F\u0063\u0061\u006C\u0065\u0044\u0061\u0074\u0065\u0053\u0074\u0072\u0069\u006E\u0067']()},{'\u006D\u0065\u0072\u0067\u0065':!![]});log['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']+=`<span class="text-green-400">OK ✅</span><br>`;log['\u0073\u0063\u0072\u006F\u006C\u006C\u0054\u006F\u0070']=log['\u0073\u0063\u0072\u006F\u006C\u006C\u0048\u0065\u0069\u0067\u0068\u0074'];}alert(`✅ Éxito. Se procesaron los ${total} alumnos.`);if(typeof window['\u0063\u0061\u0072\u0067\u0061\u0072\u0042\u006C\u006F\u0071\u0075\u0065\u0073']==="noitcnuf".split("").reverse().join(""))await window['\u0063\u0061\u0072\u0067\u0061\u0072\u0042\u006C\u006F\u0071\u0075\u0065\u0073']();}catch(e){log['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']+=`<br><span class="text-red-500">❌ Error: ${e['\u006D\u0065\u0073\u0073\u0061\u0067\u0065']}</span>`;}finally{btn['\u0064\u0069\u0073\u0061\u0062\u006C\u0065\u0064']=false;}};window['\u0063\u006F\u006E\u0073\u0075\u006C\u0074\u0061\u0072\u0044\u004E\u0049']=async()=>{const dni=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0064\u006E\u0069")['\u0076\u0061\u006C\u0075\u0065'];var _0x2329c=(633178^633176)+(198632^198635);const inputNombre=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u006E\u006F\u006D\u0062\u0072\u0065\u0073");_0x2329c='\u0062\u006B\u0067\u006F\u0068\u0064';var _0xfd5e=(522216^522221)+(785483^785475);const btn=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0062\u0074\u006E\u0042\u0075\u0073\u0063\u0061\u0072\u0044\u004E\u0049");_0xfd5e=(825761^825767)+(741416^741416);if(dni['\u006C\u0065\u006E\u0067\u0074\u0068']!==(574333^574325))return alert("\u0044\u004E\u0049\u0020\u0069\u006E\u0076\u00E1\u006C\u0069\u0064\u006F");btn['\u0064\u0069\u0073\u0061\u0062\u006C\u0065\u0064']=!![];btn['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']="\u23F3";try{var _0x86g=(897803^897805)+(540306^540304);const token="a8f93900f8926431067b9bdaaa7a04a3fa64be146234702d228cf54da0d18857".split("").reverse().join("");_0x86g='\u006C\u0064\u006F\u006A\u0069\u0069';var _0x82d=(806248^806254)+(469721^469725);const response=await fetch("ind/ipa/ved.urepipa//:sptth".split("").reverse().join(""),{"method":"\u0050\u004F\u0053\u0054","headers":{"\u0041\u0063\u0063\u0065\u0070\u0074":"application/json","Content-Type":"application/json","\u0041\u0075\u0074\u0068\u006F\u0072\u0069\u007A\u0061\u0074\u0069\u006F\u006E":`Bearer ${token}`},'\u0062\u006F\u0064\u0079':JSON['\u0073\u0074\u0072\u0069\u006E\u0067\u0069\u0066\u0079']({'\u0064\u006E\u0069':dni})});_0x82d=(816271^816262)+(337466^337469);let _0xcc4c;const res=await response['\u006A\u0073\u006F\u006E']();_0xcc4c=441023^441021;if(res['\u0073\u0075\u0063\u0063\u0065\u0073\u0073']&&res['\u0064\u0061\u0074\u0061']){let _0x53544b;const nombres=res['\u0064\u0061\u0074\u0061']['\u006E\u006F\u006D\u0062\u0072\u0065\u0073'];_0x53544b="nmjoic".split("").reverse().join("");const apePaterno=res['\u0064\u0061\u0074\u0061']['\u0061\u0070\u0065\u006C\u006C\u0069\u0064\u006F\u005F\u0070\u0061\u0074\u0065\u0072\u006E\u006F'];const apeMaterno=res['\u0064\u0061\u0074\u0061']['\u0061\u0070\u0065\u006C\u006C\u0069\u0064\u006F\u005F\u006D\u0061\u0074\u0065\u0072\u006E\u006F'];inputNombre['\u0076\u0061\u006C\u0075\u0065']=`${nombres} ${apePaterno} ${apeMaterno}`['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']();}else{throw new Error("\u004E\u006F\u0020\u0065\u006E\u0063\u006F\u006E\u0074\u0072\u0061\u0064\u006F");}}catch(error){console['\u0065\u0072\u0072\u006F\u0072']("\u0045\u0072\u0072\u006F\u0072\u003A",error);alert(".etnemlaunam erbmon le esergnI .aen\xEDl ed areuf etnemlaropmet oicivreS".split("").reverse().join(""));inputNombre['\u0064\u0069\u0073\u0061\u0062\u006C\u0065\u0064']=false;inputNombre['\u0066\u006F\u0063\u0075\u0073']();}finally{btn['\u0064\u0069\u0073\u0061\u0062\u006C\u0065\u0064']=false;btn['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']="\uD83D\uDD0D";}};window['\u0069\u006D\u0070\u0072\u0069\u006D\u0069\u0072\u0043\u0061\u0072\u006E\u0065\u0074']=async dni=>{try{var _0xcbde=(954648^954654)+(366062^366055);const docAlu=await getDoc(doc(db,"\u0061\u006C\u0075\u006D\u006E\u006F\u0073",dni));_0xcbde=(937232^937240)+(137174^137173);if(!docAlu['\u0065\u0078\u0069\u0073\u0074\u0073']())return alert("sotad rarepucer la rorrE".split("").reverse().join(""));var _0xdbec1c=(319480^319472)+(230873^230879);const a=docAlu['\u0064\u0061\u0074\u0061']();_0xdbec1c=(591548^591547)+(284335^284333);let _0xdac;const palabras=(a['\u006E\u006F\u006D\u0062\u0072\u0065\u0073']||"")['\u0074\u0072\u0069\u006D']()['\u0073\u0070\u006C\u0069\u0074']("\u0020");_0xdac=(558808^558813)+(627071^627063);let _0x263e;let nom="";_0x263e=268854^268853;let _0x60e2c;let ape="";_0x60e2c=(484164^484172)+(738106^738106);if(palabras['\u006C\u0065\u006E\u0067\u0074\u0068']>=(207052^207055)){nom=palabras['\u0073\u006C\u0069\u0063\u0065'](686223^686223,707217^707219)['\u006A\u006F\u0069\u006E']("\u0020");ape=palabras['\u0073\u006C\u0069\u0063\u0065'](646677^646679)['\u006A\u006F\u0069\u006E']("\u0020");}else{nom=palabras[938321^938321]||"";ape=palabras['\u0073\u006C\u0069\u0063\u0065'](189377^189376)['\u006A\u006F\u0069\u006E']("\u0020")||"";}var _0x6395c=(979416^979420)+(339701^339700);const ventana=window['\u006F\u0070\u0065\u006E']('','',"008=htdiw,006=thgieh".split("").reverse().join(""));_0x6395c=(813078^813078)+(548949^548948);ventana['\u0064\u006F\u0063\u0075\u006D\u0065\u006E\u0074']['\u0077\u0072\u0069\u0074\u0065'](`
             <html>
             <head>
-                <title>Carnet - ${a.nombres}</title>
+                <title>Carnet - ${a['\u006E\u006F\u006D\u0062\u0072\u0065\u0073']}</title>
                 <style>
                     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #eee; }
                     .carnet { 
@@ -464,8 +82,8 @@ window.imprimirCarnet = async (dni) => {
                         <div class="label">Estudiante:</div>
                         <div class="nombre">${nom}</div>
                         <div class="apellido">${ape}</div>
-                        <span class="dni-val">DNI: ${a.dni}</span>
-                        <span class="grado-val">AULA: ${a.grado || '-'}° "${a.seccion || '-'}"</span>
+                        <span class="dni-val">DNI: ${a['\u0064\u006E\u0069']}</span>
+                        <span class="grado-val">AULA: ${a['\u0067\u0072\u0061\u0064\u006F']||"\u002D"}° "${a['\u0073\u0065\u0063\u0063\u0069\u006F\u006E']||"\u002D"}"</span>
                     </div>
 
                     <div class="qr-box">
@@ -476,460 +94,53 @@ window.imprimirCarnet = async (dni) => {
                 </div>
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
                 <script>
-                    new QRCode(document.getElementById("qr"), { text: "${a.dni}", width: 80, height: 80 });
+                    new QRCode(document.getElementById("qr"), { text: "${a['\u0064\u006E\u0069']}", width: 80, height: 80 });
                     setTimeout(() => { window.print(); window.close(); }, 800);
                 </script>
             </body>
             </html>
-        `);
-        ventana.document.close();
-        
-    } catch (e) {
-        console.error(e);
-        alert("Error al generar impresión");
-    }
-};
-
-// --- 4. EXPORTACIÓN PDF ---
-window.generarReportePDF = async () => {
-    const { jsPDF } = window.jspdf;
-    const docPDF = new jsPDF();
-    const hoyId = new Date().toLocaleDateString('en-CA');
-    const snap = await getDocs(collection(db, "asistencia", hoyId, "registros"));
-    
-    if(snap.empty) return alert("No hay datos para exportar hoy.");
-
-    console.log("Generando PDF segmentado por aulas...");
-
-    // 1. Agrupar datos por Grado/Sección primero
-    const datosPorGrado = {};
-    for (const d of snap.docs) {
-        const dataAsis = d.data();
-        let gradoSec = "N/A";
-
-        const docAlu = await getDoc(doc(db, "alumnos", d.id));
-        if (docAlu.exists()) {
-            const alu = docAlu.data();
-            gradoSec = `${alu.grado}° "${alu.seccion}"`.toUpperCase();
-        }
-
-        if (!datosPorGrado[gradoSec]) datosPorGrado[gradoSec] = [];
-        datosPorGrado[gradoSec].push([
-            dataAsis.hora || '--:--', 
-            d.id, 
-            dataAsis.nombres.toUpperCase(), 
-            gradoSec, 
-            dataAsis.estado.toUpperCase()
-        ]);
-    }
-
-    // 2. Generar hojas en el PDF
-    const grados = Object.keys(datosPorGrado).sort();
-    
-    grados.forEach((grado, index) => {
-        // Si no es la primera hoja, añadimos una nueva página
-        if (index > 0) docPDF.addPage();
-
-        // Encabezado Institucional
-        docPDF.setTextColor(21, 128, 61); // Verde Malingas
-        docPDF.setFontSize(16);
-        docPDF.setFont("helvetica", "bold");
-        docPDF.text("I.E. HORACIO ZEBALLOS GÁMEZ", 14, 20);
-        
-        docPDF.setFontSize(10);
-        docPDF.setTextColor(100);
-        docPDF.text(`MALINGAS - TAMBOGRANDE | REPORTE DE ASISTENCIA`, 14, 25);
-        
-        docPDF.setDrawColor(21, 128, 61);
-        docPDF.line(14, 27, 196, 27); // Línea decorativa verde
-
-        docPDF.setTextColor(0);
-        docPDF.setFontSize(12);
-        docPDF.text(`FECHA: ${hoyId}`, 14, 35);
-        docPDF.text(`GRADO Y SECCIÓN: ${grado}`, 14, 42);
-
-        // Tabla de alumnos para este grado específico
-        docPDF.autoTable({ 
-            startY: 48, 
-            head: [['HORA', 'DNI', 'ESTUDIANTE', 'G/S', 'ESTADO']], 
-            body: datosPorGrado[grado], 
-            headStyles: { 
-                fillColor: [21, 128, 61], // Fondo Verde
-                textColor: [255, 255, 255], // Texto Blanco
-                fontStyle: 'bold'
-            },
-            styles: { 
-                fontSize: 9,
-                cellPadding: 3
-            },
-            alternateRowStyles: {
-                fillColor: [240, 253, 244] // Verde muy claro para filas alternas
-            }
-        });
-
-        // Pie de página con número de página
-        const pageCount = docPDF.internal.getNumberOfPages();
-        docPDF.setFontSize(8);
-        docPDF.setTextColor(150);
-        docPDF.text(`Página ${pageCount}`, 196, 285, { align: 'right' });
-    });
-
-    docPDF.save(`Reporte_Asistencia_HZG_${hoyId}.pdf`);
-};
-
-// --- 5. EXPORTACIÓN EXCEL ---
-window.generarReporteExcel = async () => {
-    const hoyId = new Date().toLocaleDateString('en-CA');
-    const snap = await getDocs(collection(db, "asistencia", hoyId, "registros"));
-    
-    if (snap.empty) return alert("No hay datos para exportar hoy.");
-
-    const datosPorGrado = {};
-
-    // 1. Agrupación de datos por Grado/Sección
-    for (const d of snap.docs) {
-        const data = d.data();
-        let gradoSec = "N/A";
-        const docAlu = await getDoc(doc(db, "alumnos", d.id));
-        if (docAlu.exists()) {
-            const alu = docAlu.data();
-            gradoSec = `${alu.grado}${alu.seccion}`.toUpperCase();
-        }
-        if (!datosPorGrado[gradoSec]) datosPorGrado[gradoSec] = [];
-        datosPorGrado[gradoSec].push({
-            "HORA": data.hora || '--:--',
-            "DNI": d.id,
-            "ESTUDIANTE": data.nombres.toUpperCase(),
-            "GRADO/SEC": gradoSec,
-            "ESTADO": data.estado.toUpperCase()
-        });
-    }
-
-    // 2. Crear el Libro de Trabajo (Workbook)
-    const wb = XLSX.utils.book_new();
-
-    // 3. Crear una hoja por cada grupo
-    Object.keys(datosPorGrado).sort().forEach(grado => {
-        // 1. Convertimos los datos a hoja de cálculo
-        const ws = XLSX.utils.json_to_sheet(datosPorGrado[grado]);
-
-        // 2. --- AQUÍ VA EL DISEÑO ---
-        // Definimos el rango de la hoja (ej: A1:E10)
-        const range = XLSX.utils.decode_range(ws['!ref']);
-
-        // Recorremos las celdas de la primera fila (encabezados) para darles estilo
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-            const address = XLSX.utils.encode_cell({ r: 0, c: C }); // Fila 0, Columna C
-            if (!ws[address]) continue;
-
-            // IMPORTANTE: Para que estos estilos funcionen en .xlsx libre, 
-            // a veces es necesario usar una extensión de la librería o forzar el formato XML.
-            ws[address].s = {
-                fill: { fgColor: { rgb: "15803D" } }, // Verde institucional
-                font: { color: { rgb: "FFFFFF" }, bold: true }, // Blanco Negrita
-                alignment: { horizontal: "center" }
-            };
-        }
-
-        // Ajuste de anchos de columna (esto sí funciona siempre)
-        ws['!cols'] = [
-            { wch: 12 }, { wch: 15 }, { wch: 45 }, { wch: 12 }, { wch: 15 }
-        ];
-
-        XLSX.utils.book_append_sheet(wb, ws, `GRADO ${grado}`);
-    });
-
-    // 4. Exportar como archivo .xlsx (Formato moderno, no dañado)
-    XLSX.writeFile(wb, `Reporte_Asistencia_HZG_${hoyId}.xlsx`);
-};
-
-const enviarNotificacionUltraMsg = async (telefono, nombre, estado) => {
-    const url = "https://api.ultramsg.com/instance169160/messages/chat";
-    const token = "bkd2pujvtq9icz2w";
-    const mensaje = `*I.E. Horacio Zeballos Zeballos*\n\nHola, se informa que el estudiante *${nombre}* registró su ingreso como: *${estado.toUpperCase()}*.\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
-
-    const params = new URLSearchParams();
-    params.append('token', token);
-    params.append('to', `+51${telefono}`); // Asegúrate de que el teléfono tenga 9 dígitos
-    params.append('body', mensaje);
-
-    try {
-        await fetch(url, {
-            method: 'POST',
-            body: params
-        });
-        console.log("Notificación enviada a:", nombre);
-    } catch (error) {
-        console.error("Error al enviar UltraMsg:", error);
-    }
-};
-
-// --- 6. GESTIÓN DE BLOQUES Y VISTA DE ALUMNOS ---
-window.cargarBloques = async () => {
-    const contenedor = document.getElementById('contenedorBloques');
-    const vistaTabla = document.getElementById('vistaTablaAlumnos');
-    const btnVolver = document.getElementById('btnVolverBloques');
-    const titulo = document.getElementById('tituloLista');
-
-    contenedor.classList.remove('hidden');
-    vistaTabla.classList.add('hidden');
-    btnVolver.classList.add('hidden');
-    titulo.innerText = "Grados y Secciones";
-    
-    // Agrega un mensaje de carga
-    contenedor.innerHTML = "<p class='col-span-full text-center text-slate-500'>Cargando grados...</p>";
-
-    try {
-        const snap = await getDocs(collection(db, "alumnos"));
-        
-        if (snap.empty) {
-            contenedor.innerHTML = "<p class='col-span-full text-center text-red-500 font-bold'>No hay alumnos registrados.</p>";
-            return;
-        }
-
-        const gradosSet = new Set();
-        snap.forEach(doc => {
-            const data = doc.data();
-            // Verifica que existan estos campos exactos en tus documentos de Firebase
-            if (data.grado && data.seccion) {
-                gradosSet.add(`${data.grado}${data.seccion}`.toUpperCase());
-            }
-        });
-
-        contenedor.innerHTML = ""; // Limpiamos el mensaje de carga
-        
-        if (gradosSet.size === 0) {
-            contenedor.innerHTML = "<p class='col-span-full text-center text-orange-500'>Los alumnos registrados no tienen Grado o Sección asignados.</p>";
-        }
-
-        Array.from(gradosSet).sort().forEach(gradoSec => {
-            contenedor.innerHTML += `
+        `);ventana['\u0064\u006F\u0063\u0075\u006D\u0065\u006E\u0074']['\u0063\u006C\u006F\u0073\u0065']();}catch(e){console['\u0065\u0072\u0072\u006F\u0072'](e);alert("\u0045\u0072\u0072\u006F\u0072\u0020\u0061\u006C\u0020\u0067\u0065\u006E\u0065\u0072\u0061\u0072\u0020\u0069\u006D\u0070\u0072\u0065\u0073\u0069\u00F3\u006E");}};window['\u0067\u0065\u006E\u0065\u0072\u0061\u0072\u0052\u0065\u0070\u006F\u0072\u0074\u0065\u0050\u0044\u0046']=async()=>{const{"jsPDF":jsPDF}=window['\u006A\u0073\u0070\u0064\u0066'];const docPDF=new jsPDF();let _0x25adb;const hoyId=new Date()['\u0074\u006F\u004C\u006F\u0063\u0061\u006C\u0065\u0044\u0061\u0074\u0065\u0053\u0074\u0072\u0069\u006E\u0067']("\u0065\u006E\u002D\u0043\u0041");_0x25adb=(401533^401535)+(164004^164005);const snap=await getDocs(collection(db,"aicnetsisa".split("").reverse().join(""),hoyId,"sortsiger".split("").reverse().join("")));if(snap['\u0065\u006D\u0070\u0074\u0079'])return alert("\u004E\u006F\u0020\u0068\u0061\u0079\u0020\u0064\u0061\u0074\u006F\u0073\u0020\u0070\u0061\u0072\u0061\u0020\u0065\u0078\u0070\u006F\u0072\u0074\u0061\u0072\u0020\u0068\u006F\u0079\u002E");console['\u006C\u006F\u0067']("\u0047\u0065\u006E\u0065\u0072\u0061\u006E\u0064\u006F\u0020\u0050\u0044\u0046\u0020\u0073\u0065\u0067\u006D\u0065\u006E\u0074\u0061\u0064\u006F\u0020\u0070\u006F\u0072\u0020\u0061\u0075\u006C\u0061\u0073\u002E\u002E\u002E");const datosPorGrado={};for(const d of snap['\u0064\u006F\u0063\u0073']){var _0xa_0xefg=(628180^628176)+(365385^365386);const dataAsis=d['\u0064\u0061\u0074\u0061']();_0xa_0xefg='\u0070\u006E\u0065\u0064\u0071\u006D';var _0x0b235f=(335463^335462)+(471378^471387);let gradoSec="A/N".split("").reverse().join("");_0x0b235f=(603907^603905)+(702285^702280);const docAlu=await getDoc(doc(db,"sonmula".split("").reverse().join(""),d['\u0069\u0064']));if(docAlu['\u0065\u0078\u0069\u0073\u0074\u0073']()){let _0xdc2be;const alu=docAlu['\u0064\u0061\u0074\u0061']();_0xdc2be=(674971^674970)+(830406^830405);gradoSec=`${alu['\u0067\u0072\u0061\u0064\u006F']}° "${alu['\u0073\u0065\u0063\u0063\u0069\u006F\u006E']}"`['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']();}if(!datosPorGrado[gradoSec])datosPorGrado[gradoSec]=[];datosPorGrado[gradoSec]['\u0070\u0075\u0073\u0068']([dataAsis['\u0068\u006F\u0072\u0061']||"\u002D\u002D\u003A\u002D\u002D",d['\u0069\u0064'],dataAsis['\u006E\u006F\u006D\u0062\u0072\u0065\u0073']['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065'](),gradoSec,dataAsis['\u0065\u0073\u0074\u0061\u0064\u006F']['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']()]);}var _0x7_0x1dc=(755862^755862)+(870556^870559);const grados=Object['\u006B\u0065\u0079\u0073'](datosPorGrado)['\u0073\u006F\u0072\u0074']();_0x7_0x1dc=291183^291177;grados['\u0066\u006F\u0072\u0045\u0061\u0063\u0068']((grado,index)=>{if(index>(307898^307898))docPDF['\u0061\u0064\u0064\u0050\u0061\u0067\u0065']();docPDF['\u0073\u0065\u0074\u0054\u0065\u0078\u0074\u0043\u006F\u006C\u006F\u0072'](696656^696645,853322^853450,900219^900166);docPDF['\u0073\u0065\u0074\u0046\u006F\u006E\u0074\u0053\u0069\u007A\u0065'](673801^673817);docPDF['\u0073\u0065\u0074\u0046\u006F\u006E\u0074']("acitevleh".split("").reverse().join(""),"dlob".split("").reverse().join(""));docPDF['\u0074\u0065\u0078\u0074']("\u0049\u002E\u0045\u002E\u0020\u0048\u004F\u0052\u0041\u0043\u0049\u004F\u0020\u005A\u0045\u0042\u0041\u004C\u004C\u004F\u0053\u0020\u0047\u00C1\u004D\u0045\u005A",244369^244383,441633^441653);docPDF['\u0073\u0065\u0074\u0046\u006F\u006E\u0074\u0053\u0069\u007A\u0065'](315577^315571);docPDF['\u0073\u0065\u0074\u0054\u0065\u0078\u0074\u0043\u006F\u006C\u006F\u0072'](779468^779432);docPDF['\u0074\u0065\u0078\u0074'](`MALINGAS - TAMBOGRANDE | REPORTE DE ASISTENCIA`,468249^468247,428784^428777);docPDF['\u0073\u0065\u0074\u0044\u0072\u0061\u0077\u0043\u006F\u006C\u006F\u0072'](714513^714500,340464^340336,459643^459590);docPDF['\u006C\u0069\u006E\u0065'](613586^613596,608282^608257,458010^458206,543116^543127);docPDF['\u0073\u0065\u0074\u0054\u0065\u0078\u0074\u0043\u006F\u006C\u006F\u0072'](719413^719413);docPDF['\u0073\u0065\u0074\u0046\u006F\u006E\u0074\u0053\u0069\u007A\u0065'](366924^366912);docPDF['\u0074\u0065\u0078\u0074'](`FECHA: ${hoyId}`,597173^597179,809156^809191);docPDF['\u0074\u0065\u0078\u0074'](`GRADO Y SECCIÓN: ${grado}`,352026^352020,499872^499850);docPDF['\u0061\u0075\u0074\u006F\u0054\u0061\u0062\u006C\u0065']({'\u0073\u0074\u0061\u0072\u0074\u0059':48,"head":[["AROH".split("").reverse().join(""),"\u0044\u004E\u0049","ETNAIDUTSE".split("").reverse().join(""),"\u0047\u002F\u0053","ODATSE".split("").reverse().join("")]],'\u0062\u006F\u0064\u0079':datosPorGrado[grado],"headStyles":{'\u0066\u0069\u006C\u006C\u0043\u006F\u006C\u006F\u0072':[612311^612290,766111^765983,526607^526642],"textColor":[753401^753158,734433^734238,839955^840172],"fontStyle":'bold'},'\u0073\u0074\u0079\u006C\u0065\u0073':{"fontSize":9,'\u0063\u0065\u006C\u006C\u0050\u0061\u0064\u0064\u0069\u006E\u0067':3},'\u0061\u006C\u0074\u0065\u0072\u006E\u0061\u0074\u0065\u0052\u006F\u0077\u0053\u0074\u0079\u006C\u0065\u0073':{'\u0066\u0069\u006C\u006C\u0043\u006F\u006C\u006F\u0072':[940047^940287,156419^156670,849154^849398]}});let _0xed_0x251;const pageCount=docPDF['\u0069\u006E\u0074\u0065\u0072\u006E\u0061\u006C']['\u0067\u0065\u0074\u004E\u0075\u006D\u0062\u0065\u0072\u004F\u0066\u0050\u0061\u0067\u0065\u0073']();_0xed_0x251='\u0066\u0067\u0067\u006C\u0068\u006D';docPDF['\u0073\u0065\u0074\u0046\u006F\u006E\u0074\u0053\u0069\u007A\u0065'](613167^613159);docPDF['\u0073\u0065\u0074\u0054\u0065\u0078\u0074\u0043\u006F\u006C\u006F\u0072'](430968^431086);docPDF['\u0074\u0065\u0078\u0074'](`Página ${pageCount}`,309970^309782,671522^671295,{'\u0061\u006C\u0069\u0067\u006E':"\u0072\u0069\u0067\u0068\u0074"});});docPDF['\u0073\u0061\u0076\u0065'](`Reporte_Asistencia_HZG_${hoyId}.pdf`);};window['\u0067\u0065\u006E\u0065\u0072\u0061\u0072\u0052\u0065\u0070\u006F\u0072\u0074\u0065\u0045\u0078\u0063\u0065\u006C']=async()=>{var _0x0efd=(122593^122593)+(950640^950641);const hoyId=new Date()['\u0074\u006F\u004C\u006F\u0063\u0061\u006C\u0065\u0044\u0061\u0074\u0065\u0053\u0074\u0072\u0069\u006E\u0067']("\u0065\u006E\u002D\u0043\u0041");_0x0efd='\u006D\u006C\u0066\u0063\u0065\u006D';const snap=await getDocs(collection(db,"\u0061\u0073\u0069\u0073\u0074\u0065\u006E\u0063\u0069\u0061",hoyId,"\u0072\u0065\u0067\u0069\u0073\u0074\u0072\u006F\u0073"));if(snap['\u0065\u006D\u0070\u0074\u0079'])return alert(".yoh ratropxe arap sotad yah oN".split("").reverse().join(""));const datosPorGrado={};for(const d of snap['\u0064\u006F\u0063\u0073']){const data=d['\u0064\u0061\u0074\u0061']();let gradoSec="\u004E\u002F\u0041";let _0xa0deba;const docAlu=await getDoc(doc(db,"\u0061\u006C\u0075\u006D\u006E\u006F\u0073",d['\u0069\u0064']));_0xa0deba="hgeefc".split("").reverse().join("");if(docAlu['\u0065\u0078\u0069\u0073\u0074\u0073']()){const alu=docAlu['\u0064\u0061\u0074\u0061']();gradoSec=`${alu['\u0067\u0072\u0061\u0064\u006F']}${alu['\u0073\u0065\u0063\u0063\u0069\u006F\u006E']}`['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']();}if(!datosPorGrado[gradoSec])datosPorGrado[gradoSec]=[];datosPorGrado[gradoSec]['\u0070\u0075\u0073\u0068']({"\u0048\u004F\u0052\u0041":data['\u0068\u006F\u0072\u0061']||"--:--".split("").reverse().join(""),"\u0044\u004E\u0049":d['\u0069\u0064'],"\u0045\u0053\u0054\u0055\u0044\u0049\u0041\u004E\u0054\u0045":data['\u006E\u006F\u006D\u0062\u0072\u0065\u0073']['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065'](),"GRADO/SEC":gradoSec,"\u0045\u0053\u0054\u0041\u0044\u004F":data['\u0065\u0073\u0074\u0061\u0064\u006F']['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']()});}let _0x342d;const wb=XLSX['\u0075\u0074\u0069\u006C\u0073']['\u0062\u006F\u006F\u006B\u005F\u006E\u0065\u0077']();_0x342d=443355^443357;Object['\u006B\u0065\u0079\u0073'](datosPorGrado)['\u0073\u006F\u0072\u0074']()['\u0066\u006F\u0072\u0045\u0061\u0063\u0068'](grado=>{const ws=XLSX['\u0075\u0074\u0069\u006C\u0073']['\u006A\u0073\u006F\u006E\u005F\u0074\u006F\u005F\u0073\u0068\u0065\u0065\u0074'](datosPorGrado[grado]);const range=XLSX['\u0075\u0074\u0069\u006C\u0073']['\u0064\u0065\u0063\u006F\u0064\u0065\u005F\u0072\u0061\u006E\u0067\u0065'](ws["\u0021\u0072\u0065\u0066"]);for(let C=range['\u0073']['\u0063'];C<=range['\u0065']['\u0063'];++C){var _0xc8325f=(184334^184334)+(128386^128390);const address=XLSX['\u0075\u0074\u0069\u006C\u0073']['\u0065\u006E\u0063\u006F\u0064\u0065\u005F\u0063\u0065\u006C\u006C']({'\u0072':0,'\u0063':C});_0xc8325f=(882751^882749)+(556274^556276);if(!ws[address])continue;ws[address]['\u0073']={'\u0066\u0069\u006C\u006C':{"fgColor":{'\u0072\u0067\u0062':"15803D"}},"font":{'\u0063\u006F\u006C\u006F\u0072':{"rgb":"\u0046\u0046\u0046\u0046\u0046\u0046"},'\u0062\u006F\u006C\u0064':!![]},'\u0061\u006C\u0069\u0067\u006E\u006D\u0065\u006E\u0074':{'\u0068\u006F\u0072\u0069\u007A\u006F\u006E\u0074\u0061\u006C':"\u0063\u0065\u006E\u0074\u0065\u0072"}};}ws["\u0021\u0063\u006F\u006C\u0073"]=[{'\u0077\u0063\u0068':12},{'\u0077\u0063\u0068':15},{'\u0077\u0063\u0068':45},{'\u0077\u0063\u0068':12},{'\u0077\u0063\u0068':15}];XLSX['\u0075\u0074\u0069\u006C\u0073']['\u0062\u006F\u006F\u006B\u005F\u0061\u0070\u0070\u0065\u006E\u0064\u005F\u0073\u0068\u0065\u0065\u0074'](wb,ws,`GRADO ${grado}`);});XLSX['\u0077\u0072\u0069\u0074\u0065\u0046\u0069\u006C\u0065'](wb,`Reporte_Asistencia_HZG_${hoyId}.xlsx`);};let _0xf4615d;const enviarNotificacionUltraMsg=async(telefono,nombre,estado)=>{let _0xd2251f;const url="\u0068\u0074\u0074\u0070\u0073\u003A\u002F\u002F\u0061\u0070\u0069\u002E\u0075\u006C\u0074\u0072\u0061\u006D\u0073\u0067\u002E\u0063\u006F\u006D\u002F\u0069\u006E\u0073\u0074\u0061\u006E\u0063\u0065\u0031\u0036\u0039\u0031\u0036\u0030\u002F\u006D\u0065\u0073\u0073\u0061\u0067\u0065\u0073\u002F\u0063\u0068\u0061\u0074";_0xd2251f=853407^853401;var _0x4da67d=(281038^281038)+(343149^343150);const token="w2zci9qtvjup2dkb".split("").reverse().join("");_0x4da67d=(160499^160501)+(649494^649493);var _0x7c63f=(713838^713836)+(160006^160001);const mensaje=`*I.E. Horacio Zeballos Zeballos*\n\nHola, se informa que el estudiante *${nombre}* registró su ingreso como: *${estado['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']()}*.\n\n_Malingas: Disciplina, Lealtad, Honradez._`;_0x7c63f=(821061^821057)+(641586^641591);var _0x2a7b9c=(458335^458333)+(658147^658148);const params=new URLSearchParams();_0x2a7b9c=(460258^460257)+(818442^818441);params['\u0061\u0070\u0070\u0065\u006E\u0064']("\u0074\u006F\u006B\u0065\u006E",token);params['\u0061\u0070\u0070\u0065\u006E\u0064']("\u0074\u006F",`+51${telefono}`);params['\u0061\u0070\u0070\u0065\u006E\u0064']("\u0062\u006F\u0064\u0079",mensaje);try{await fetch(url,{'\u006D\u0065\u0074\u0068\u006F\u0064':"\u0050\u004F\u0053\u0054",'\u0062\u006F\u0064\u0079':params});console['\u006C\u006F\u0067']("\u004E\u006F\u0074\u0069\u0066\u0069\u0063\u0061\u0063\u0069\u00F3\u006E\u0020\u0065\u006E\u0076\u0069\u0061\u0064\u0061\u0020\u0061\u003A",nombre);}catch(error){console['\u0065\u0072\u0072\u006F\u0072']("\u0045\u0072\u0072\u006F\u0072\u0020\u0061\u006C\u0020\u0065\u006E\u0076\u0069\u0061\u0072\u0020\u0055\u006C\u0074\u0072\u0061\u004D\u0073\u0067\u003A",error);}};_0xf4615d=(821156^821165)+(504284^504276);window['\u0063\u0061\u0072\u0067\u0061\u0072\u0042\u006C\u006F\u0071\u0075\u0065\u0073']=async()=>{const contenedor=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("seuqolBrodenetnoc".split("").reverse().join(""));const vistaTabla=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0076\u0069\u0073\u0074\u0061\u0054\u0061\u0062\u006C\u0061\u0041\u006C\u0075\u006D\u006E\u006F\u0073");var _0xecba0d=(288153^288155)+(930202^930203);const btnVolver=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0062\u0074\u006E\u0056\u006F\u006C\u0076\u0065\u0072\u0042\u006C\u006F\u0071\u0075\u0065\u0073");_0xecba0d=(280469^280467)+(794323^794320);let _0x56a1de;const titulo=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("atsiLolutit".split("").reverse().join(""));_0x56a1de=(552599^552599)+(808225^808232);contenedor['\u0063\u006C\u0061\u0073\u0073\u004C\u0069\u0073\u0074']['\u0072\u0065\u006D\u006F\u0076\u0065']("\u0068\u0069\u0064\u0064\u0065\u006E");vistaTabla['\u0063\u006C\u0061\u0073\u0073\u004C\u0069\u0073\u0074']['\u0061\u0064\u0064']("\u0068\u0069\u0064\u0064\u0065\u006E");btnVolver['\u0063\u006C\u0061\u0073\u0073\u004C\u0069\u0073\u0074']['\u0061\u0064\u0064']("\u0068\u0069\u0064\u0064\u0065\u006E");titulo['\u0069\u006E\u006E\u0065\u0072\u0054\u0065\u0078\u0074']="\u0047\u0072\u0061\u0064\u006F\u0073\u0020\u0079\u0020\u0053\u0065\u0063\u0063\u0069\u006F\u006E\u0065\u0073";contenedor['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']=">p/<...sodarg odnagraC>'005-etals-txet retnec-txet lluf-naps-loc'=ssalc p<".split("").reverse().join("");try{var _0xd6a4c=(785436^785429)+(445542^445538);const snap=await getDocs(collection(db,"sonmula".split("").reverse().join("")));_0xd6a4c=(646608^646616)+(154286^154285);if(snap['\u0065\u006D\u0070\u0074\u0079']){contenedor['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']=">p/<.sodartsiger sonmula yah oN>'dlob-tnof 005-der-txet retnec-txet lluf-naps-loc'=ssalc p<".split("").reverse().join("");return;}var _0xcaedbe=(302830^302827)+(796571^796571);const gradosSet=new Set();_0xcaedbe=(109677^109674)+(509794^509798);snap['\u0066\u006F\u0072\u0045\u0061\u0063\u0068'](doc=>{const data=doc['\u0064\u0061\u0074\u0061']();if(data['\u0067\u0072\u0061\u0064\u006F']&&data['\u0073\u0065\u0063\u0063\u0069\u006F\u006E']){gradosSet['\u0061\u0064\u0064'](`${data['\u0067\u0072\u0061\u0064\u006F']}${data['\u0073\u0065\u0063\u0063\u0069\u006F\u006E']}`['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']());}});contenedor['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']="";if(gradosSet['\u0073\u0069\u007A\u0065']===(350425^350425)){contenedor['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']="\u003C\u0070\u0020\u0063\u006C\u0061\u0073\u0073\u003D\u0027\u0063\u006F\u006C\u002D\u0073\u0070\u0061\u006E\u002D\u0066\u0075\u006C\u006C\u0020\u0074\u0065\u0078\u0074\u002D\u0063\u0065\u006E\u0074\u0065\u0072\u0020\u0074\u0065\u0078\u0074\u002D\u006F\u0072\u0061\u006E\u0067\u0065\u002D\u0035\u0030\u0030\u0027\u003E\u004C\u006F\u0073\u0020\u0061\u006C\u0075\u006D\u006E\u006F\u0073\u0020\u0072\u0065\u0067\u0069\u0073\u0074\u0072\u0061\u0064\u006F\u0073\u0020\u006E\u006F\u0020\u0074\u0069\u0065\u006E\u0065\u006E\u0020\u0047\u0072\u0061\u0064\u006F\u0020\u006F\u0020\u0053\u0065\u0063\u0063\u0069\u00F3\u006E\u0020\u0061\u0073\u0069\u0067\u006E\u0061\u0064\u006F\u0073\u002E\u003C\u002F\u0070\u003E";}Array['\u0066\u0072\u006F\u006D'](gradosSet)['\u0073\u006F\u0072\u0074']()['\u0066\u006F\u0072\u0045\u0061\u0063\u0068'](gradoSec=>{contenedor['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']+=`
                 <button onclick="window.verAlumnosGrado('${gradoSec}')" 
                     class="bg-white border-2 border-green-100 p-8 rounded-2xl hover:bg-green-600 hover:text-white transition-all transform hover:scale-105 shadow-md text-center">
                     <span class="block text-3xl font-black text-green-800">${gradoSec}</span>
                     <span class="text-[10px] font-bold uppercase opacity-60">Ver Alumnos</span>
-                </button>`;
-        });
-    } catch (e) { 
-        console.error("Error al cargar bloques:", e);
-        contenedor.innerHTML = `<p class='col-span-full text-center text-red-500'>Error de conexión: ${e.message}</p>`;
-    }
-};
-
-// CRÍTICO: Esta función debe ser window. para que el HTML la detecte
-// --- VARIABLES GLOBALES DE PAGINACIÓN ---
-let alumnosFiltradosMemoria = [];
-let paginaActualAlumnos = 1;
-const filasPorPagina = 10;
-let gradoSeleccionadoActual = "";
-
-window.verAlumnosGrado = (gradoSecSeleccionado) => {
-    const contenedor = document.getElementById('contenedorBloques');
-    const vistaTabla = document.getElementById('vistaTablaAlumnos');
-    const btnVolver = document.getElementById('btnVolverBloques');
-    const titulo = document.getElementById('tituloLista');
-    
-    gradoSeleccionadoActual = gradoSecSeleccionado;
-    contenedor.classList.add('hidden');
-    vistaTabla.classList.remove('hidden');
-    btnVolver.classList.remove('hidden');
-    titulo.innerText = `ALUMNOS DE ${gradoSecSeleccionado}`;
-
-    // Escucha en tiempo real
-    onSnapshot(collection(db, "alumnos"), (snapshot) => {
-    alumnosFiltradosMemoria = [];
-    
-    snapshot.forEach(docSnap => {
-        const a = docSnap.data();
-        const combinacion = `${a.grado}${a.seccion}`.toUpperCase();
-        
-        if (combinacion === gradoSecSeleccionado) {
-            alumnosFiltradosMemoria.push({ id: docSnap.id, ...a });
-        }
-    });
-
-    // --- CORRECCIÓN: ORDENAMIENTO NATURAL (Numérico + Texto) ---
-    alumnosFiltradosMemoria.sort((a, b) => {
-        return a.nombres.localeCompare(b.nombres, undefined, {
-            numeric: true,
-            sensitivity: 'base'
-        });
-    });
-
-    paginaActualAlumnos = 1; 
-    renderizarTablaConPaginacion();
-});
-};
-
-function renderizarTablaConPaginacion() {
-    const tabla = document.getElementById('tablaAlumnos');
-    if (!tabla) return;
-    tabla.innerHTML = "";
-
-    const inicio = (paginaActualAlumnos - 1 ) * filasPorPagina;
-    const fin = inicio + filasPorPagina;
-    const subsetAlumnos = alumnosFiltradosMemoria.slice(inicio, fin);
-
-    if (subsetAlumnos.length === 0) {
-        tabla.innerHTML = `<tr><td colspan="5" class="p-10 text-center italic text-slate-400">No hay alumnos para mostrar.</td></tr>`;
-        return;
-    }
-
-    subsetAlumnos.forEach(a => {
-        // Usamos backticks (`) para el template string
-        tabla.innerHTML += `
+                </button>`;});}catch(e){console['\u0065\u0072\u0072\u006F\u0072'](":seuqolb ragrac la rorrE".split("").reverse().join(""),e);contenedor['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']=`<p class='col-span-full text-center text-red-500'>Error de conexión: ${e['\u006D\u0065\u0073\u0073\u0061\u0067\u0065']}</p>`;}};let alumnosFiltradosMemoria=[];let paginaActualAlumnos=493374^493375;const filasPorPagina=208033^208043;let gradoSeleccionadoActual="";window['\u0076\u0065\u0072\u0041\u006C\u0075\u006D\u006E\u006F\u0073\u0047\u0072\u0061\u0064\u006F']=gradoSecSeleccionado=>{const contenedor=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0063\u006F\u006E\u0074\u0065\u006E\u0065\u0064\u006F\u0072\u0042\u006C\u006F\u0071\u0075\u0065\u0073");const vistaTabla=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0076\u0069\u0073\u0074\u0061\u0054\u0061\u0062\u006C\u0061\u0041\u006C\u0075\u006D\u006E\u006F\u0073");let _0x8c_0xfdb;const btnVolver=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0062\u0074\u006E\u0056\u006F\u006C\u0076\u0065\u0072\u0042\u006C\u006F\u0071\u0075\u0065\u0073");_0x8c_0xfdb="iddhei".split("").reverse().join("");let _0x287a;const titulo=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0074\u0069\u0074\u0075\u006C\u006F\u004C\u0069\u0073\u0074\u0061");_0x287a=(243805^243797)+(708511^708505);gradoSeleccionadoActual=gradoSecSeleccionado;contenedor['\u0063\u006C\u0061\u0073\u0073\u004C\u0069\u0073\u0074']['\u0061\u0064\u0064']("\u0068\u0069\u0064\u0064\u0065\u006E");vistaTabla['\u0063\u006C\u0061\u0073\u0073\u004C\u0069\u0073\u0074']['\u0072\u0065\u006D\u006F\u0076\u0065']("neddih".split("").reverse().join(""));btnVolver['\u0063\u006C\u0061\u0073\u0073\u004C\u0069\u0073\u0074']['\u0072\u0065\u006D\u006F\u0076\u0065']("\u0068\u0069\u0064\u0064\u0065\u006E");titulo['\u0069\u006E\u006E\u0065\u0072\u0054\u0065\u0078\u0074']=`ALUMNOS DE ${gradoSecSeleccionado}`;onSnapshot(collection(db,"\u0061\u006C\u0075\u006D\u006E\u006F\u0073"),snapshot=>{alumnosFiltradosMemoria=[];snapshot['\u0066\u006F\u0072\u0045\u0061\u0063\u0068'](docSnap=>{const a=docSnap['\u0064\u0061\u0074\u0061']();const combinacion=`${a['\u0067\u0072\u0061\u0064\u006F']}${a['\u0073\u0065\u0063\u0063\u0069\u006F\u006E']}`['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']();if(combinacion===gradoSecSeleccionado){alumnosFiltradosMemoria['\u0070\u0075\u0073\u0068']({"id":docSnap['\u0069\u0064'],...a});}});alumnosFiltradosMemoria['\u0073\u006F\u0072\u0074']((a,b)=>{return a['\u006E\u006F\u006D\u0062\u0072\u0065\u0073']['\u006C\u006F\u0063\u0061\u006C\u0065\u0043\u006F\u006D\u0070\u0061\u0072\u0065'](b['\u006E\u006F\u006D\u0062\u0072\u0065\u0073'],undefined,{'\u006E\u0075\u006D\u0065\u0072\u0069\u0063':!![],'\u0073\u0065\u006E\u0073\u0069\u0074\u0069\u0076\u0069\u0074\u0079':"\u0062\u0061\u0073\u0065"});});paginaActualAlumnos=189211^189210;renderizarTablaConPaginacion();});};function renderizarTablaConPaginacion(_0xf6da0c){const _0x9_0xff3=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0074\u0061\u0062\u006C\u0061\u0041\u006C\u0075\u006D\u006E\u006F\u0073");if(!_0x9_0xff3)return;_0x9_0xff3['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']="";const _0x16df=(paginaActualAlumnos-(973014^973015))*filasPorPagina;_0xf6da0c=620933^620929;var _0x37aag=(674179^674181)+(378365^378367);const _0x3b966d=_0x16df+filasPorPagina;_0x37aag=(517472^517476)+(860043^860043);const _0x8cd=alumnosFiltradosMemoria['\u0073\u006C\u0069\u0063\u0065'](_0x16df,_0x3b966d);if(_0x8cd['\u006C\u0065\u006E\u0067\u0074\u0068']===(883631^883631)){_0x9_0xff3['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']=`<tr><td colspan="5" class="p-10 text-center italic text-slate-400">No hay alumnos para mostrar.</td></tr>`;return;}_0x8cd['\u0066\u006F\u0072\u0045\u0061\u0063\u0068'](a=>{_0x9_0xff3['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']+=`
             <tr class="border-b hover:bg-green-50 transition">
-                <td class="p-4 font-mono text-sm text-slate-600">${a.dni}</td>
-                <td class="p-4 font-bold text-slate-700 uppercase">${a.nombres}</td>
+                <td class="p-4 font-mono text-sm text-slate-600">${a['\u0064\u006E\u0069']}</td>
+                <td class="p-4 font-bold text-slate-700 uppercase">${a['\u006E\u006F\u006D\u0062\u0072\u0065\u0073']}</td>
                 <td class="p-4 text-center">
-                    <span class="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-xs font-black">${a.grado}°</span>
+                    <span class="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-xs font-black">${a['\u0067\u0072\u0061\u0064\u006F']}°</span>
                 </td>
                 <td class="p-4 text-center">
-                    <span class="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-xs font-black">${a.seccion}</span>
+                    <span class="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-xs font-black">${a['\u0073\u0065\u0063\u0063\u0069\u006F\u006E']}</span>
                 </td>
                 <td class="p-4 text-center space-x-2">
                     <div class="flex justify-center gap-2">
-                        <button onclick="window.imprimirCarnet('${a.dni}')" 
+                        <button onclick="window.imprimirCarnet('${a['\u0064\u006E\u0069']}')" 
                                 class="bg-green-100 text-green-700 px-3 py-1 rounded font-bold text-[10px] hover:bg-green-600 hover:text-white transition">
                             CARNET
                         </button>
-                        <button onclick="window.editarAlumno('${a.dni}', '${a.nombres}', '${a.grado}', '${a.seccion}', '${a.telefono}')" 
+                        <button onclick="window.editarAlumno('${a['\u0064\u006E\u0069']}', '${a['\u006E\u006F\u006D\u0062\u0072\u0065\u0073']}', '${a['\u0067\u0072\u0061\u0064\u006F']}', '${a['\u0073\u0065\u0063\u0063\u0069\u006F\u006E']}', '${a['\u0074\u0065\u006C\u0065\u0066\u006F\u006E\u006F']}')" 
                                 class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded font-bold text-[10px] hover:bg-yellow-600 hover:text-white transition">
                             EDITAR
                         </button>
-                        <button onclick="window.eliminarAlumno('${a.dni}')" class="text-red-500 hover:scale-125 transition">
+                        <button onclick="window.eliminarAlumno('${a['\u0064\u006E\u0069']}')" class="text-red-500 hover:scale-125 transition">
                             ❌
                         </button>
                     </div>
                 </td>
-            </tr>`;
-    });
-
-    crearControlesPaginacion();
-}
-
-function crearControlesPaginacion() {
-    let divPaginacion = document.getElementById('paginacionAlumnos');
-    
-    // Si no existe el div de controles, lo creamos
-    if (!divPaginacion) {
-        divPaginacion = document.createElement('div');
-        divPaginacion.id = 'paginacionAlumnos';
-        divPaginacion.className = "flex justify-center items-center gap-4 mt-6 p-4 bg-slate-50 rounded-xl border border-slate-100";
-        document.getElementById('vistaTablaAlumnos').appendChild(divPaginacion);
-    }
-
-    const totalPaginas = Math.ceil(alumnosFiltradosMemoria.length / filasPorPagina);
-
-    divPaginacion.innerHTML = `
+            </tr>`;});crearControlesPaginacion();}function crearControlesPaginacion(){var _0xb74d=(606081^606086)+(193870^193862);let _0x2d71f=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("sonmulAnoicanigap".split("").reverse().join(""));_0xb74d=718551^718544;if(!_0x2d71f){_0x2d71f=document['\u0063\u0072\u0065\u0061\u0074\u0065\u0045\u006C\u0065\u006D\u0065\u006E\u0074']("\u0064\u0069\u0076");_0x2d71f['\u0069\u0064']="sonmulAnoicanigap".split("").reverse().join("");_0x2d71f['\u0063\u006C\u0061\u0073\u0073\u004E\u0061\u006D\u0065']="\u0066\u006C\u0065\u0078\u0020\u006A\u0075\u0073\u0074\u0069\u0066\u0079\u002D\u0063\u0065\u006E\u0074\u0065\u0072\u0020\u0069\u0074\u0065\u006D\u0073\u002D\u0063\u0065\u006E\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002D\u0034\u0020\u006D\u0074\u002D\u0036\u0020\u0070\u002D\u0034\u0020\u0062\u0067\u002D\u0073\u006C\u0061\u0074\u0065\u002D\u0035\u0030\u0020\u0072\u006F\u0075\u006E\u0064\u0065\u0064\u002D\u0078\u006C\u0020\u0062\u006F\u0072\u0064\u0065\u0072\u0020\u0062\u006F\u0072\u0064\u0065\u0072\u002D\u0073\u006C\u0061\u0074\u0065\u002D\u0031\u0030\u0030";document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0076\u0069\u0073\u0074\u0061\u0054\u0061\u0062\u006C\u0061\u0041\u006C\u0075\u006D\u006E\u006F\u0073")['\u0061\u0070\u0070\u0065\u006E\u0064\u0043\u0068\u0069\u006C\u0064'](_0x2d71f);}var _0xa232dc=(982822^982821)+(275426^275427);const _0x11_0x117=Math['\u0063\u0065\u0069\u006C'](alumnosFiltradosMemoria['\u006C\u0065\u006E\u0067\u0074\u0068']/filasPorPagina);_0xa232dc=(174463^174459)+(341452^341454);_0x2d71f['\u0069\u006E\u006E\u0065\u0072\u0048\u0054\u004D\u004C']=`
         <button onclick="window.moverPaginaAlumnos(-1)" 
-                ${paginaActualAlumnos === 1 ? 'disabled' : ''} 
+                ${paginaActualAlumnos===(325559^325558)?"\u0064\u0069\u0073\u0061\u0062\u006C\u0065\u0064":''} 
                 class="px-4 py-2 bg-white border rounded-lg font-bold text-xs disabled:opacity-30 hover:bg-slate-100 transition">
             ANTERIOR
         </button>
         <span class="text-xs font-black text-slate-500 uppercase">
-            Página ${paginaActualAlumnos} de ${totalPaginas || 1}
+            Página ${paginaActualAlumnos} de ${_0x11_0x117||647511^647510}
         </span>
         <button onclick="window.moverPaginaAlumnos(1)" 
-                ${paginaActualAlumnos === totalPaginas || totalPaginas === 0 ? 'disabled' : ''} 
+                ${paginaActualAlumnos===_0x11_0x117||_0x11_0x117===(123020^123020)?"\u0064\u0069\u0073\u0061\u0062\u006C\u0065\u0064":''} 
                 class="px-4 py-2 bg-white border rounded-lg font-bold text-xs disabled:opacity-30 hover:bg-slate-100 transition">
             SIGUIENTE
         </button>
-    `;
-}
-
-window.moverPaginaAlumnos = (dir) => {
-    paginaActualAlumnos += dir;
-    renderizarTablaConPaginacion();
-    // Scroll suave al inicio de la tabla para mejor experiencia
-    document.getElementById('buscador').scrollIntoView({ behavior: 'smooth' });
-};
-// --- FUNCIONES DE APOYO ---
-window.editarAlumno = (dni, nombres, grado, seccion, telefono) => {
-    document.getElementById('dni').value = dni;
-    document.getElementById('nombres').value = nombres;
-    document.getElementById('grado').value = grado;
-    document.getElementById('seccion').value = seccion;
-    document.getElementById('telefono').value = telefono;
-    window.mostrarSeccion('registro');
-};
-
-window.eliminarAlumno = async (id) => { if(confirm("¿Eliminar?")) await deleteDoc(doc(db, "alumnos", id)); };
-
-window.justificarFalta = async (dni, nombre) => {
-    const n = prompt(`Cambiar estado para ${nombre}:\n1. Puntual\n2. Tardanza\n3. Tardanza Justificada\n4. Falta Justificada\n5. Falta`, "4");
-    const estados = ["", "Puntual", "Tardanza", "Tardanza Justificada", "Falta Justificada", "Falta"];
-    const nuevoEstado = estados[n];
-
-    if (!nuevoEstado) return;
-    const hoy = new Date().toLocaleDateString('en-CA');
-
-    try {
-        // 1. Actualizar estado
-        await setDoc(doc(db, "asistencia", hoy, "registros", dni), { 
-            estado: nuevoEstado 
-        }, { merge: true });
-
-        // 2. RECUPERAR TELÉFONO DEL ALUMNO (Paso clave)
-        const docAlu = await getDoc(doc(db, "alumnos", dni));
-        if (docAlu.exists() && docAlu.data().telefono) {
-            const tel = docAlu.data().telefono;
-            const msj = `*ACTUALIZACIÓN*\n\nSe informa que la asistencia de *${nombre}* ha sido actualizada a: *${nuevoEstado.toUpperCase()}*.\n\n_I.E. Horacio Zeballos Gámez_`;
-            
-            await window.enviarNotificacionUltraMsg(tel, nombre, nuevoEstado, msj);
-            alert("Estado actualizado y padre notificado.");
-        }
-    } catch (e) { alert("Error al actualizar."); }
-};
-
-window.enviarNotificacionUltraMsg = async (telefono, nombre, estado, mensajePersonalizado = null) => {
-    const url = "https://api.ultramsg.com/instance169160/messages/chat";
-    const token = "bkd2pujvtq9icz2w";
-    
-    // Si no hay mensaje personalizado, usa el estándar
-    const mensaje = mensajePersonalizado || `*INGRESO*\n\nSe informa que el estudiante *${nombre}* registró su ingreso como: *${estado.toUpperCase()}*.`;
-
-    const params = new URLSearchParams();
-    params.append('token', token);
-    params.append('to', `+51${telefono}`);
-    params.append('body', mensaje);
-    params.append('priority', '10');
-
-    try {
-        await fetch(url, { method: 'POST', body: params });
-    } catch (e) {
-        console.error("Error UltraMsg:", e);
-    }
-};
-// --- NUEVA FUNCIÓN: Ajuste Dinámico de Texto ---
-window.ajustarTextoDinámico = (elementoId) => {
-    const elemento = document.getElementById(elementoId);
-    if (!elemento) return;
-
-    const contenedor = elemento.parentElement;
-    let tamañoFuente = parseInt(window.getComputedStyle(elemento).fontSize);
-
-    // Bucle para reducir el tamaño de fuente si el texto se sale del contenedor
-    // (Ancho máximo del carnet es ~300px)
-    while (elemento.scrollWidth > contenedor.offsetWidth && tamañoFuente > 8) {
-        tamañoFuente--; // Reducimos 1px
-        elemento.style.fontSize = tamañoFuente + 'px';
-    }
-};
-
-// --- FUNCIÓN DE BÚSQUEDA ---
-window.filtrarAlumnos = () => {
-    const texto = document.getElementById('buscador').value.toLowerCase();
-    const filas = document.querySelectorAll('#tablaAlumnos tr');
-
-    filas.forEach(fila => {
-        // Obtenemos el texto de la fila (DNI y Nombre)
-        const contenido = fila.innerText.toLowerCase();
-        // Si el texto coincide, mostramos; si no, ocultamos
-        fila.style.display = contenido.includes(texto) ? "" : "none";
-    });
-};
-
-
-// Iniciar procesos
-iniciarControlAsistencia();
+    `;}window['\u006D\u006F\u0076\u0065\u0072\u0050\u0061\u0067\u0069\u006E\u0061\u0041\u006C\u0075\u006D\u006E\u006F\u0073']=dir=>{paginaActualAlumnos+=dir;renderizarTablaConPaginacion();document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("rodacsub".split("").reverse().join(""))['\u0073\u0063\u0072\u006F\u006C\u006C\u0049\u006E\u0074\u006F\u0056\u0069\u0065\u0077']({'\u0062\u0065\u0068\u0061\u0076\u0069\u006F\u0072':'smooth'});};window['\u0065\u0064\u0069\u0074\u0061\u0072\u0041\u006C\u0075\u006D\u006E\u006F']=(dni,nombres,grado,seccion,telefono)=>{document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("ind".split("").reverse().join(""))['\u0076\u0061\u006C\u0075\u0065']=dni;document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u006E\u006F\u006D\u0062\u0072\u0065\u0073")['\u0076\u0061\u006C\u0075\u0065']=nombres;document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("odarg".split("").reverse().join(""))['\u0076\u0061\u006C\u0075\u0065']=grado;document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("\u0073\u0065\u0063\u0063\u0069\u006F\u006E")['\u0076\u0061\u006C\u0075\u0065']=seccion;document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("onofelet".split("").reverse().join(""))['\u0076\u0061\u006C\u0075\u0065']=telefono;window['\u006D\u006F\u0073\u0074\u0072\u0061\u0072\u0053\u0065\u0063\u0063\u0069\u006F\u006E']("ortsiger".split("").reverse().join(""));};window['\u0065\u006C\u0069\u006D\u0069\u006E\u0061\u0072\u0041\u006C\u0075\u006D\u006E\u006F']=async id=>{if(confirm("\u00BF\u0045\u006C\u0069\u006D\u0069\u006E\u0061\u0072\u003F"))await deleteDoc(doc(db,"\u0061\u006C\u0075\u006D\u006E\u006F\u0073",id));};window['\u006A\u0075\u0073\u0074\u0069\u0066\u0069\u0063\u0061\u0072\u0046\u0061\u006C\u0074\u0061']=async(dni,nombre)=>{const n=prompt(`Cambiar estado para ${nombre}:\n1. Puntual\n2. Tardanza\n3. Tardanza Justificada\n4. Falta Justificada\n5. Falta`,"\u0034");const estados=["","lautnuP".split("").reverse().join(""),"aznadraT".split("").reverse().join(""),"\u0054\u0061\u0072\u0064\u0061\u006E\u007A\u0061\u0020\u004A\u0075\u0073\u0074\u0069\u0066\u0069\u0063\u0061\u0064\u0061","\u0046\u0061\u006C\u0074\u0061\u0020\u004A\u0075\u0073\u0074\u0069\u0066\u0069\u0063\u0061\u0064\u0061","atlaF".split("").reverse().join("")];var _0xff1ece=(125626^125627)+(108494^108491);const nuevoEstado=estados[n];_0xff1ece='\u006D\u0062\u0061\u0062\u006A\u0063';if(!nuevoEstado)return;let _0x8_0xf0e;const hoy=new Date()['\u0074\u006F\u004C\u006F\u0063\u0061\u006C\u0065\u0044\u0061\u0074\u0065\u0053\u0074\u0072\u0069\u006E\u0067']("AC-ne".split("").reverse().join(""));_0x8_0xf0e='\u006F\u0063\u0069\u0063\u0070\u006A';try{await setDoc(doc(db,"\u0061\u0073\u0069\u0073\u0074\u0065\u006E\u0063\u0069\u0061",hoy,"sortsiger".split("").reverse().join(""),dni),{"estado":nuevoEstado},{"merge":!![]});var _0xa72ag=(821992^821984)+(865571^865572);const docAlu=await getDoc(doc(db,"\u0061\u006C\u0075\u006D\u006E\u006F\u0073",dni));_0xa72ag=564536^564537;if(docAlu['\u0065\u0078\u0069\u0073\u0074\u0073']()&&docAlu['\u0064\u0061\u0074\u0061']()['\u0074\u0065\u006C\u0065\u0066\u006F\u006E\u006F']){var _0xge53ee=(287776^287781)+(514502^514502);const tel=docAlu['\u0064\u0061\u0074\u0061']()['\u0074\u0065\u006C\u0065\u0066\u006F\u006E\u006F'];_0xge53ee=(515806^515806)+(692060^692053);let _0x285f;const msj=`*ACTUALIZACIÓN*\n\nSe informa que la asistencia de *${nombre}* ha sido actualizada a: *${nuevoEstado['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']()}*.\n\n_I.E. Horacio Zeballos Gámez_`;_0x285f=737248^737250;await window['\u0065\u006E\u0076\u0069\u0061\u0072\u004E\u006F\u0074\u0069\u0066\u0069\u0063\u0061\u0063\u0069\u006F\u006E\u0055\u006C\u0074\u0072\u0061\u004D\u0073\u0067'](tel,nombre,nuevoEstado,msj);alert(".odacifiton erdap y odazilautca odatsE".split("").reverse().join(""));}}catch(e){alert("\u0045\u0072\u0072\u006F\u0072\u0020\u0061\u006C\u0020\u0061\u0063\u0074\u0075\u0061\u006C\u0069\u007A\u0061\u0072\u002E");}};window['\u0065\u006E\u0076\u0069\u0061\u0072\u004E\u006F\u0074\u0069\u0066\u0069\u0063\u0061\u0063\u0069\u006F\u006E\u0055\u006C\u0074\u0072\u0061\u004D\u0073\u0067']=async(telefono,nombre,estado,mensajePersonalizado=null)=>{var _0x49bf=(274817^274824)+(301259^301258);const url="\u0068\u0074\u0074\u0070\u0073\u003A\u002F\u002F\u0061\u0070\u0069\u002E\u0075\u006C\u0074\u0072\u0061\u006D\u0073\u0067\u002E\u0063\u006F\u006D\u002F\u0069\u006E\u0073\u0074\u0061\u006E\u0063\u0065\u0031\u0036\u0039\u0031\u0036\u0030\u002F\u006D\u0065\u0073\u0073\u0061\u0067\u0065\u0073\u002F\u0063\u0068\u0061\u0074";_0x49bf=381614^381606;const token="\u0062\u006B\u0064\u0032\u0070\u0075\u006A\u0076\u0074\u0071\u0039\u0069\u0063\u007A\u0032\u0077";const mensaje=mensajePersonalizado||`*INGRESO*\n\nSe informa que el estudiante *${nombre}* registró su ingreso como: *${estado['\u0074\u006F\u0055\u0070\u0070\u0065\u0072\u0043\u0061\u0073\u0065']()}*.`;const params=new URLSearchParams();params['\u0061\u0070\u0070\u0065\u006E\u0064']("\u0074\u006F\u006B\u0065\u006E",token);params['\u0061\u0070\u0070\u0065\u006E\u0064']("ot".split("").reverse().join(""),`+51${telefono}`);params['\u0061\u0070\u0070\u0065\u006E\u0064']("\u0062\u006F\u0064\u0079",mensaje);params['\u0061\u0070\u0070\u0065\u006E\u0064']("\u0070\u0072\u0069\u006F\u0072\u0069\u0074\u0079","\u0031\u0030");try{await fetch(url,{"method":"\u0050\u004F\u0053\u0054",'\u0062\u006F\u0064\u0079':params});}catch(e){console['\u0065\u0072\u0072\u006F\u0072'](":gsMartlU rorrE".split("").reverse().join(""),e);}};window['\u0061\u006A\u0075\u0073\u0074\u0061\u0072\u0054\u0065\u0078\u0074\u006F\u0044\u0069\u006E\u00E1\u006D\u0069\u0063\u006F']=elementoId=>{var _0x2ca=(181693^181688)+(515944^515945);const elemento=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064'](elementoId);_0x2ca="mabldg".split("").reverse().join("");if(!elemento)return;const contenedor=elemento['\u0070\u0061\u0072\u0065\u006E\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074'];var _0x5befc=(853723^853720)+(756480^756484);let tamañoFuente=parseInt(window['\u0067\u0065\u0074\u0043\u006F\u006D\u0070\u0075\u0074\u0065\u0064\u0053\u0074\u0079\u006C\u0065'](elemento)['\u0066\u006F\u006E\u0074\u0053\u0069\u007A\u0065']);_0x5befc=(244077^244079)+(410457^410463);while(elemento['\u0073\u0063\u0072\u006F\u006C\u006C\u0057\u0069\u0064\u0074\u0068']>contenedor['\u006F\u0066\u0066\u0073\u0065\u0074\u0057\u0069\u0064\u0074\u0068']&&tamañoFuente>(792436^792444)){tamañoFuente--;elemento['\u0073\u0074\u0079\u006C\u0065']['\u0066\u006F\u006E\u0074\u0053\u0069\u007A\u0065']=tamañoFuente+"xp".split("").reverse().join("");}};window['\u0066\u0069\u006C\u0074\u0072\u0061\u0072\u0041\u006C\u0075\u006D\u006E\u006F\u0073']=()=>{let _0x16fe;const texto=document['\u0067\u0065\u0074\u0045\u006C\u0065\u006D\u0065\u006E\u0074\u0042\u0079\u0049\u0064']("rodacsub".split("").reverse().join(""))['\u0076\u0061\u006C\u0075\u0065']['\u0074\u006F\u004C\u006F\u0077\u0065\u0072\u0043\u0061\u0073\u0065']();_0x16fe=(637901^637892)+(345027^345026);const filas=document['\u0071\u0075\u0065\u0072\u0079\u0053\u0065\u006C\u0065\u0063\u0074\u006F\u0072\u0041\u006C\u006C']("\u0023\u0074\u0061\u0062\u006C\u0061\u0041\u006C\u0075\u006D\u006E\u006F\u0073\u0020\u0074\u0072");filas['\u0066\u006F\u0072\u0045\u0061\u0063\u0068'](fila=>{var _0x9c4d=(638011^638013)+(963095^963094);const contenido=fila['\u0069\u006E\u006E\u0065\u0072\u0054\u0065\u0078\u0074']['\u0074\u006F\u004C\u006F\u0077\u0065\u0072\u0043\u0061\u0073\u0065']();_0x9c4d=(663501^663501)+(193662^193655);fila['\u0073\u0074\u0079\u006C\u0065']['\u0064\u0069\u0073\u0070\u006C\u0061\u0079']=contenido['\u0069\u006E\u0063\u006C\u0075\u0064\u0065\u0073'](texto)?"":"\u006E\u006F\u006E\u0065";});};iniciarControlAsistencia();
