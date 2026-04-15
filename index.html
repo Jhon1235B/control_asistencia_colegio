@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>I.E. Horacio Zeballos Gámez - Sistema de Asistencia</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+
+    <style>
+        body {
+            background-color: #d1fae5; 
+            background-image: linear-gradient(rgba(209, 250, 229, 0.93), rgba(209, 250, 229, 0.93)), url('logo_colegio.jpeg');
+            background-repeat: no-repeat;
+            background-position: center 30%;
+            background-size: 400px;
+            background-attachment: fixed;
+        }
+
+        .bg-malingas-green { background-color: #15803d; }
+        .text-malingas-green { color: #15803d; }
+        .border-malingas-green { border-color: #15803d; }
+
+        @media print {
+            body * { visibility: hidden; }
+            #printableArea, #printableArea * { visibility: visible; }
+            #printableArea { position: absolute; left: 0; top: 0; width: 100%; border: none !important; }
+            button { display: none !important; }
+        }
+        
+        .section-transition { transition: all 0.3s ease-in-out; }
+        
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #15803d; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans">
+
+    <nav class="bg-malingas-green text-white p-4 shadow-lg sticky top-0 z-50 border-b-4 border-white/20">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <img src="logo_colegio.jpeg" alt="Logo" class="h-12 w-12 rounded-full bg-white p-1 shadow-md">
+                <div>
+                    <h1 class="font-bold text-lg leading-tight uppercase">I.E. Horacio Zeballos Gámez</h1>
+                    <p class="text-[10px] tracking-[0.2em] opacity-90 font-semibold uppercase">Malingas - Tambogrande</p>
+                </div>
+            </div>
+            
+            <div class="flex gap-2">
+                <button onclick="mostrarSeccion('registro')" class="hover:bg-white/20 px-4 py-2 rounded-xl transition text-xs font-black uppercase">Registro</button>
+                <button onclick="mostrarSeccion('lista')" class="hover:bg-white/20 px-4 py-2 rounded-xl transition text-xs font-black uppercase">Alumnos</button>
+                <button onclick="mostrarSeccion('asistencia')" class="hover:bg-white/20 px-4 py-2 rounded-xl transition text-xs font-black uppercase flex items-center gap-1">
+                    <span>📋</span> Asistencia
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-6xl mx-auto p-4 md:p-6">
+        
+        <section id="sec-registro" class="grid grid-cols-1 md:grid-cols-2 gap-6 section-transition">
+            
+            <div class="space-y-6">
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                    <div class="flex items-center gap-2 mb-4 border-b pb-2">
+                        <span class="text-2xl">📝</span>
+                        <h2 class="text-lg font-bold text-slate-700 uppercase">Gestión de Alumnos</h2>
+                    </div>
+                    <form id="registroForm" class="space-y-4">
+                        <div class="flex gap-2">
+                            <input type="text" id="dni" placeholder="Documento DNI" maxlength="8" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+                            <button type="button" onclick="window.consultarDNI()" id="btnBuscarDNI" class="bg-blue-600 text-white px-4 rounded-xl font-bold hover:bg-blue-700 transition flex items-center justify-center min-w-[50px]">
+                                <span id="iconoBusqueda">🔍</span>
+                            </button>
+                        </div>
+                        <input type="text" id="nombres" placeholder="Nombres y Apellidos" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+                        <div class="grid grid-cols-2 gap-3">
+                            <input type="text" id="grado" placeholder="Grado (Ej: 5)" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition">
+                            <input type="text" id="seccion" placeholder="Sección (Ej: A)" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition">
+                        </div>
+                        <input type="tel" id="telefono" placeholder="WhatsApp Apoderado" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+                        <button type="submit" class="w-full bg-malingas-green text-white py-4 rounded-xl font-bold hover:bg-green-800 transition shadow-lg uppercase tracking-wider">
+                            💾 Guardar Alumno
+                        </button>
+                    </form>
+                </div>
+
+                <div class="bg-white p-6 rounded-2xl shadow-xl border-2 border-dashed border-blue-200">
+                    <div class="flex items-center gap-2 mb-4">
+    <img src="https://cdn-icons-png.flaticon.com/512/732/732220.png" class="h-6 w-6 object-contain" alt="Excel">
+    
+    <h2 class="text-sm font-black text-blue-700 uppercase tracking-tight">
+        Carga Masiva por excel
+    </h2>
+</div>
+                    <div class="space-y-4">
+                        <p class="text-[11px] text-slate-500 font-medium">Sube una archivo de lista del grado para registrar múltiples alumnos automáticamente (verificar al final por que puede a ver que falte un alumno).</p>
+                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
+    <input type="file" id="fotoMasiva" accept="image/*, .xlsx, .xls" 
+           class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer">
+    
+    <button onclick="window.escanearYRegistrarMasivo()" id="btnMasivo" 
+            class="w-full mt-4 bg-blue-600 text-white py-3 rounded-xl font-black text-xs uppercase hover:bg-blue-800 transition shadow-md">
+        Iniciar registro por excel
+    </button>
+</div>
+                        <div id="logRegistro" class="hidden h-32 overflow-y-auto bg-slate-900 text-green-400 font-mono text-[10px] p-3 rounded-xl custom-scroll"></div>
+                    </div>
+                </div>
+            </div>
+
+<div id="qrContainer" class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 flex flex-col items-center justify-center hidden">
+    <div id="printableArea" class="flex flex-col items-center p-6 border-4 border-double border-malingas-green rounded-3xl bg-white w-full max-w-[300px] shadow-sm">
+    <img src="logo_colegio.jpeg" class="h-10 mb-2">
+    <h3 class="text-sm font-black mb-4 text-malingas-green border-b w-full text-center pb-2 uppercase tracking-tighter">Carnet Estudiantil</h3>
+    
+    <div id="qrcode" class="bg-white p-2 border rounded-lg mb-4 max-w-[150px] mx-auto"></div>
+    
+    <div class="text-center space-y-1 w-full px-2">
+        <div class="mb-3 border-b pb-2 border-slate-100 overflow-hidden">
+            <p id="soloNombresMostrado" class="font-black text-2xl uppercase text-slate-800 leading-tight break-words max-w-full"></p>
+            <p id="soloApellidosMostrado" class="font-bold text-lg uppercase text-slate-600 leading-tight break-words max-w-full"></p>
+        </div>
+
+        <div class="flex justify-around text-malingas-green font-mono text-sm font-bold bg-green-50 p-2 rounded-lg">
+            <p id="dniMostrado"></p>
+            <p id="gradoSeccionMostrado"></p>
+        </div>
+
+        <p class="text-[9px] text-slate-400 font-bold uppercase mt-3 italic">Malingas: Disciplina, Lealtad, Honradez</p>
+    </div>
+</div>
+    <button onclick="window.imprimirCarnet(document.getElementById('dniMostrado').innerText.replace('DNI: ', ''))" 
+        class="mt-6 bg-emerald-600 text-white px-8 py-3 rounded-full font-black hover:bg-emerald-700 shadow-lg flex items-center gap-2 transition uppercase text-xs">
+        <span>🖨️</span> Imprimir Carnet
+    </button>
+</div>       
+ </section>
+
+        <section id="sec-lista" class="hidden section-transition">
+            <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                <div class="flex flex-col md:flex-row justify-between mb-6 gap-4 border-b pb-4">
+                    <div>
+                        <h2 id="tituloLista" class="text-xl font-black text-malingas-green uppercase">Grados y Secciones</h2>
+                        <p id="subtituloLista" class="text-slate-400 text-xs font-bold uppercase"></p>
+                    </div>
+                    <button id="btnVolverBloques" onclick="window.cargarBloques()" class="hidden bg-slate-100 text-slate-600 px-6 py-2 rounded-xl font-bold hover:bg-slate-200 transition text-xs uppercase">
+                        ⬅️ Volver
+                    </button>
+                </div>
+                <div id="contenedorBloques" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+                
+                <div id="vistaTablaAlumnos" class="hidden mt-4">
+                    <div class="mb-4">
+                        <input type="text" id="buscador" onkeyup="window.filtrarAlumnos()" 
+                               placeholder="🔍 Buscar estudiante por nombre o DNI..." 
+                               class="w-full p-3 border-2 border-green-100 rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition shadow-sm">
+                    </div>
+                    <div class="overflow-x-auto bg-white rounded-xl">
+                        <table class="w-full text-left">
+                            <thead>
+    <tr class="bg-green-50 text-green-700 text-[11px] font-black uppercase border-b-2 border-green-100">
+        <th class="p-4">DNI</th>
+        <th class="p-4">Estudiante</th>
+        <th class="p-4 text-center">Grado</th>
+        <th class="p-4 text-center">Sección</th>
+        <th class="p-4 text-center">Acciones</th>
+    </tr>
+</thead>
+                            <tbody id="tablaAlumnos" class="text-slate-600 text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="sec-asistencia" class="hidden section-transition">
+            <div class="mb-4 flex items-center gap-3 bg-green-50 p-3 rounded-xl border border-green-200">
+                <label class="text-xs font-bold text-green-800 uppercase">Consultar Fecha:</label>
+                <input type="date" id="fechaConsulta" onchange="window.cambiarFechaAsistencia(this.value)" 
+                       class="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-green-600">
+            </div>
+            <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 border-b pb-4 gap-4">
+                    <h2 class="text-xl font-black text-slate-700 uppercase">Control de Ingreso Hoy</h2>
+                    <div class="flex gap-2">
+                        <button onclick="window.generarReportePDF()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-emerald-700 transition flex items-center gap-2 text-xs font-bold uppercase">
+                            <span>📄</span> PDF
+                        </button>
+                        <button onclick="window.generarReporteExcel()" class="bg-blue-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-blue-700 transition flex items-center gap-2 text-xs font-bold uppercase">
+                            <span>📊</span> Excel
+                        </button>
+                        <button onclick="window.cerrarDia()" class="bg-malingas-green text-white px-4 py-2 rounded-xl shadow-lg hover:bg-green-800 transition text-xs font-bold uppercase">
+                            Finalizar Día
+                        </button>   
+                    </div>
+                </div>
+                <div id="asistenciaHoy" class="space-y-6">
+    <div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">
+        Cargando registros de asistencia...
+    </div>
+</div>
+            </div>
+        </section>
+    </div>
+
+    <script type="module" src="app.js"></script>
+    
+    <script>
+        // Función de navegación simple
+        function mostrarSeccion(id) {
+            document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
+            const target = document.getElementById('sec-' + id);
+            if (target) {
+                target.classList.remove('hidden');
+            }
+            if(id === 'lista' && typeof window.cargarBloques === 'function') {
+                window.cargarBloques();
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>
