@@ -1,3 +1,232 @@
-<script>
-document.write(decodeURIComponent('%3C!DOCTYPE%20html%3E%0A%3Chtml%20lang%3D%22es%22%3E%0A%3Chead%3E%0A%20%20%20%20%3Cmeta%20charset%3D%22UTF-8%22%3E%0A%20%20%20%20%3Cmeta%20name%3D%22viewport%22%20content%3D%22width%3Ddevice-width%2C%20initial-scale%3D1.0%22%3E%0A%20%20%20%20%3Ctitle%3EI.E.%20Horacio%20Zeballos%20G%C3%A1mez%20-%20Sistema%20de%20Asistencia%3C%2Ftitle%3E%0A%20%20%20%20%0A%20%20%20%20%3Cscript%20src%3D%22https%3A%2F%2Fcdn.tailwindcss.com%22%3E%3C%2Fscript%3E%0A%20%20%20%20%3Cscript%20src%3D%22https%3A%2F%2Fcdn.jsdelivr.net%2Fnpm%2Ftesseract.js%405%2Fdist%2Ftesseract.min.js%22%3E%3C%2Fscript%3E%0A%20%20%20%20%3Cscript%20src%3D%22https%3A%2F%2Fcdnjs.cloudflare.com%2Fajax%2Flibs%2Fqrcodejs%2F1.0.0%2Fqrcode.min.js%22%3E%3C%2Fscript%3E%0A%20%20%20%20%3Cscript%20src%3D%22https%3A%2F%2Fcdnjs.cloudflare.com%2Fajax%2Flibs%2Fjspdf%2F2.5.1%2Fjspdf.umd.min.js%22%3E%3C%2Fscript%3E%0A%20%20%20%20%3Cscript%20src%3D%22https%3A%2F%2Fcdnjs.cloudflare.com%2Fajax%2Flibs%2Fjspdf-autotable%2F3.5.28%2Fjspdf.plugin.autotable.min.js%22%3E%3C%2Fscript%3E%0A%20%20%20%20%0A%3Cscript%20src%3D%22https%3A%2F%2Fcdn.jsdelivr.net%2Fnpm%2Fxlsx-js-style%401.2.0%2Fdist%2Fxlsx.bundle.js%22%3E%3C%2Fscript%3E%0A%20%20%20%20%3Cscript%20type%3D%22module%22%20src%3D%22app.js%22%3E%3C%2Fscript%3E%0A%3C%2Fbody%3E%0A%0A%20%20%20%20%3Cstyle%3E%0A%20%20%20%20%20%20%20%20body%20%7B%0A%20%20%20%20%20%20%20%20%20%20%20%20background-color%3A%20%23d1fae5%3B%20%0A%20%20%20%20%20%20%20%20%20%20%20%20background-image%3A%20linear-gradient(rgba(209%2C%20250%2C%20229%2C%200.93)%2C%20rgba(209%2C%20250%2C%20229%2C%200.93))%2C%20url(\'logo_colegio.jpeg\')%3B%0A%20%20%20%20%20%20%20%20%20%20%20%20background-repeat%3A%20no-repeat%3B%0A%20%20%20%20%20%20%20%20%20%20%20%20background-position%3A%20center%2030%25%3B%0A%20%20%20%20%20%20%20%20%20%20%20%20background-size%3A%20400px%3B%0A%20%20%20%20%20%20%20%20%20%20%20%20background-attachment%3A%20fixed%3B%0A%20%20%20%20%20%20%20%20%7D%0A%0A%20%20%20%20%20%20%20%20.bg-malingas-green%20%7B%20background-color%3A%20%2315803d%3B%20%7D%0A%20%20%20%20%20%20%20%20.text-malingas-green%20%7B%20color%3A%20%2315803d%3B%20%7D%0A%20%20%20%20%20%20%20%20.border-malingas-green%20%7B%20border-color%3A%20%2315803d%3B%20%7D%0A%0A%20%20%20%20%20%20%20%20%40media%20print%20%7B%0A%20%20%20%20%20%20%20%20%20%20%20%20body%20*%20%7B%20visibility%3A%20hidden%3B%20%7D%0A%20%20%20%20%20%20%20%20%20%20%20%20%23printableArea%2C%20%23printableArea%20*%20%7B%20visibility%3A%20visible%3B%20%7D%0A%20%20%20%20%20%20%20%20%20%20%20%20%23printableArea%20%7B%20position%3A%20absolute%3B%20left%3A%200%3B%20top%3A%200%3B%20width%3A%20100%25%3B%20border%3A%20none%20!important%3B%20%7D%0A%20%20%20%20%20%20%20%20%20%20%20%20button%20%7B%20display%3A%20none%20!important%3B%20%7D%0A%20%20%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20%20%20%0A%20%20%20%20%20%20%20%20.section-transition%20%7B%20transition%3A%20all%200.3s%20ease-in-out%3B%20%7D%0A%20%20%20%20%20%20%20%20%0A%20%20%20%20%20%20%20%20.custom-scroll%3A%3A-webkit-scrollbar%20%7B%20width%3A%204px%3B%20%7D%0A%20%20%20%20%20%20%20%20.custom-scroll%3A%3A-webkit-scrollbar-thumb%20%7B%20background%3A%20%2315803d%3B%20border-radius%3A%2010px%3B%20%7D%0A%20%20%20%20%3C%2Fstyle%3E%0A%3C%2Fhead%3E%0A%3Cbody%20class%3D%22bg-slate-50%20font-sans%22%3E%0A%0A%20%20%20%20%3Cnav%20class%3D%22bg-malingas-green%20text-white%20p-4%20shadow-lg%20sticky%20top-0%20z-50%20border-b-4%20border-white%2F20%22%3E%0A%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22max-w-6xl%20mx-auto%20flex%20justify-between%20items-center%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22flex%20items-center%20gap-3%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cimg%20src%3D%22logo_colegio.jpeg%22%20alt%3D%22Logo%22%20class%3D%22h-12%20w-12%20rounded-full%20bg-white%20p-1%20shadow-md%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Ch1%20class%3D%22font-bold%20text-lg%20leading-tight%20uppercase%22%3EI.E.%20Horacio%20Zeballos%20G%C3%A1mez%3C%2Fh1%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cp%20class%3D%22text-%5B10px%5D%20tracking-%5B0.2em%5D%20opacity-90%20font-semibold%20uppercase%22%3EMalingas%20-%20Tambogrande%3C%2Fp%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22flex%20gap-2%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cbutton%20onclick%3D%22mostrarSeccion(\'registro\')%22%20class%3D%22hover%3Abg-white%2F20%20px-4%20py-2%20rounded-xl%20transition%20text-xs%20font-black%20uppercase%22%3ERegistro%3C%2Fbutton%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cbutton%20onclick%3D%22mostrarSeccion(\'lista\')%22%20class%3D%22hover%3Abg-white%2F20%20px-4%20py-2%20rounded-xl%20transition%20text-xs%20font-black%20uppercase%22%3EAlumnos%3C%2Fbutton%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cbutton%20onclick%3D%22mostrarSeccion(\'asistencia\')%22%20class%3D%22hover%3Abg-white%2F20%20px-4%20py-2%20rounded-xl%20transition%20text-xs%20font-black%20uppercase%20flex%20items-center%20gap-1%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cspan%3E%F0%9F%93%8B%3C%2Fspan%3E%20Asistencia%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fbutton%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%3C%2Fnav%3E%0A%0A%20%20%20%20%3Cdiv%20class%3D%22max-w-6xl%20mx-auto%20p-4%20md%3Ap-6%22%3E%0A%20%20%20%20%20%20%20%20%0A%20%20%20%20%20%20%20%20%3Csection%20id%3D%22sec-registro%22%20class%3D%22grid%20grid-cols-1%20md%3Agrid-cols-2%20gap-6%20section-transition%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22space-y-6%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22bg-white%20p-6%20rounded-2xl%20shadow-xl%20border%20border-slate-100%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22flex%20items-center%20gap-2%20mb-4%20border-b%20pb-2%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cspan%20class%3D%22text-2xl%22%3E%F0%9F%93%9D%3C%2Fspan%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Ch2%20class%3D%22text-lg%20font-bold%20text-slate-700%20uppercase%22%3EGesti%C3%B3n%20de%20Alumnos%3C%2Fh2%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cform%20id%3D%22registroForm%22%20class%3D%22space-y-4%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22flex%20gap-2%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cinput%20type%3D%22text%22%20id%3D%22dni%22%20placeholder%3D%22Documento%20DNI%22%20maxlength%3D%228%22%20class%3D%22w-full%20p-3%20border%20rounded-xl%20focus%3Aring-2%20focus%3Aring-green-600%20outline-none%20transition%22%20required%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cbutton%20type%3D%22button%22%20onclick%3D%22window.consultarDNI()%22%20id%3D%22btnBuscarDNI%22%20class%3D%22bg-blue-600%20text-white%20px-4%20rounded-xl%20font-bold%20hover%3Abg-blue-700%20transition%20flex%20items-center%20justify-center%20min-w-%5B50px%5D%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cspan%20id%3D%22iconoBusqueda%22%3E%F0%9F%94%8D%3C%2Fspan%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fbutton%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cinput%20type%3D%22text%22%20id%3D%22nombres%22%20placeholder%3D%22Nombres%20y%20Apellidos%22%20class%3D%22w-full%20p-3%20border%20rounded-xl%20focus%3Aring-2%20focus%3Aring-green-600%20outline-none%20transition%22%20required%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22grid%20grid-cols-2%20gap-3%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cinput%20type%3D%22text%22%20id%3D%22grado%22%20placeholder%3D%22Grado%20(Ej%3A%205)%22%20class%3D%22w-full%20p-3%20border%20rounded-xl%20focus%3Aring-2%20focus%3Aring-green-600%20outline-none%20transition%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cinput%20type%3D%22text%22%20id%3D%22seccion%22%20placeholder%3D%22Secci%C3%B3n%20(Ej%3A%20A)%22%20class%3D%22w-full%20p-3%20border%20rounded-xl%20focus%3Aring-2%20focus%3Aring-green-600%20outline-none%20transition%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cinput%20type%3D%22tel%22%20id%3D%22telefono%22%20placeholder%3D%22WhatsApp%20Apoderado%22%20class%3D%22w-full%20p-3%20border%20rounded-xl%20focus%3Aring-2%20focus%3Aring-green-600%20outline-none%20transition%22%20required%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cbutton%20type%3D%22submit%22%20class%3D%22w-full%20bg-malingas-green%20text-white%20py-4%20rounded-xl%20font-bold%20hover%3Abg-green-800%20transition%20shadow-lg%20uppercase%20tracking-wider%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%F0%9F%92%BE%20Guardar%20Alumno%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fbutton%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fform%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22bg-white%20p-6%20rounded-2xl%20shadow-xl%20border-2%20border-dashed%20border-blue-200%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22flex%20items-center%20gap-2%20mb-4%22%3E%0A%20%20%20%20%3Cimg%20src%3D%22https%3A%2F%2Fcdn-icons-png.flaticon.com%2F512%2F732%2F732220.png%22%20class%3D%22h-6%20w-6%20object-contain%22%20alt%3D%22Excel%22%3E%0A%20%20%20%20%0A%20%20%20%20%3Ch2%20class%3D%22text-sm%20font-black%20text-blue-700%20uppercase%20tracking-tight%22%3E%0A%20%20%20%20%20%20%20%20Carga%20Masiva%20por%20excel%0A%20%20%20%20%3C%2Fh2%3E%0A%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22space-y-4%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cp%20class%3D%22text-%5B11px%5D%20text-slate-500%20font-medium%22%3ESube%20una%20archivo%20de%20lista%20del%20grado%20para%20registrar%20m%C3%BAltiples%20alumnos%20autom%C3%A1ticamente%20(verificar%20al%20final%20por%20que%20puede%20a%20ver%20que%20falte%20un%20alumno).%3C%2Fp%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22bg-blue-50%20p-4%20rounded-xl%20border%20border-blue-100%22%3E%0A%20%20%20%20%3Cinput%20type%3D%22file%22%20id%3D%22fotoMasiva%22%20accept%3D%22image%2F*%2C%20.xlsx%2C%20.xls%22%20%0A%20%20%20%20%20%20%20%20%20%20%20class%3D%22block%20w-full%20text-xs%20text-slate-500%20file%3Amr-4%20file%3Apy-2%20file%3Apx-4%20file%3Arounded-full%20file%3Aborder-0%20file%3Atext-xs%20file%3Afont-bold%20file%3Abg-blue-600%20file%3Atext-white%20hover%3Afile%3Abg-blue-700%20cursor-pointer%22%3E%0A%20%20%20%20%0A%20%20%20%20%3Cbutton%20onclick%3D%22window.escanearYRegistrarMasivo()%22%20id%3D%22btnMasivo%22%20%0A%20%20%20%20%20%20%20%20%20%20%20%20class%3D%22w-full%20mt-4%20bg-blue-600%20text-white%20py-3%20rounded-xl%20font-black%20text-xs%20uppercase%20hover%3Abg-blue-800%20transition%20shadow-md%22%3E%0A%20%20%20%20%20%20%20%20Iniciar%20registro%20por%20excel%0A%20%20%20%20%3C%2Fbutton%3E%0A%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20id%3D%22logRegistro%22%20class%3D%22hidden%20h-32%20overflow-y-auto%20bg-slate-900%20text-green-400%20font-mono%20text-%5B10px%5D%20p-3%20rounded-xl%20custom-scroll%22%3E%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%0A%3Cdiv%20id%3D%22qrContainer%22%20class%3D%22bg-white%20p-6%20rounded-2xl%20shadow-xl%20border%20border-slate-100%20flex%20flex-col%20items-center%20justify-center%20hidden%22%3E%0A%20%20%20%20%3Cdiv%20id%3D%22printableArea%22%20class%3D%22flex%20flex-col%20items-center%20p-6%20border-4%20border-double%20border-malingas-green%20rounded-3xl%20bg-white%20w-full%20max-w-%5B300px%5D%20shadow-sm%22%3E%0A%20%20%20%20%3Cimg%20src%3D%22logo_colegio.jpeg%22%20class%3D%22h-10%20mb-2%22%3E%0A%20%20%20%20%3Ch3%20class%3D%22text-sm%20font-black%20mb-4%20text-malingas-green%20border-b%20w-full%20text-center%20pb-2%20uppercase%20tracking-tighter%22%3ECarnet%20Estudiantil%3C%2Fh3%3E%0A%20%20%20%20%0A%20%20%20%20%3Cdiv%20id%3D%22qrcode%22%20class%3D%22bg-white%20p-2%20border%20rounded-lg%20mb-4%20max-w-%5B150px%5D%20mx-auto%22%3E%3C%2Fdiv%3E%0A%20%20%20%20%0A%20%20%20%20%3Cdiv%20class%3D%22text-center%20space-y-1%20w-full%20px-2%22%3E%0A%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22mb-3%20border-b%20pb-2%20border-slate-100%20overflow-hidden%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cp%20id%3D%22soloNombresMostrado%22%20class%3D%22font-black%20text-2xl%20uppercase%20text-slate-800%20leading-tight%20break-words%20max-w-full%22%3E%3C%2Fp%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cp%20id%3D%22soloApellidosMostrado%22%20class%3D%22font-bold%20text-lg%20uppercase%20text-slate-600%20leading-tight%20break-words%20max-w-full%22%3E%3C%2Fp%3E%0A%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%0A%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22flex%20justify-around%20text-malingas-green%20font-mono%20text-sm%20font-bold%20bg-green-50%20p-2%20rounded-lg%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cp%20id%3D%22dniMostrado%22%3E%3C%2Fp%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cp%20id%3D%22gradoSeccionMostrado%22%3E%3C%2Fp%3E%0A%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%0A%20%20%20%20%20%20%20%20%3Cp%20class%3D%22text-%5B9px%5D%20text-slate-400%20font-bold%20uppercase%20mt-3%20italic%22%3EMalingas%3A%20Disciplina%2C%20Lealtad%2C%20Honradez%3C%2Fp%3E%0A%20%20%20%20%3C%2Fdiv%3E%0A%3C%2Fdiv%3E%0A%20%20%20%20%3Cbutton%20onclick%3D%22window.imprimirCarnet(document.getElementById(\'dniMostrado\').innerText.replace(\'DNI%3A%20\'%2C%20\'\'))%22%20%0A%20%20%20%20%20%20%20%20class%3D%22mt-6%20bg-emerald-600%20text-white%20px-8%20py-3%20rounded-full%20font-black%20hover%3Abg-emerald-700%20shadow-lg%20flex%20items-center%20gap-2%20transition%20uppercase%20text-xs%22%3E%0A%20%20%20%20%20%20%20%20%3Cspan%3E%F0%9F%96%A8%EF%B8%8F%3C%2Fspan%3E%20Imprimir%20Carnet%0A%20%20%20%20%3C%2Fbutton%3E%0A%3C%2Fdiv%3E%20%20%20%20%20%20%20%0A%20%3C%2Fsection%3E%0A%0A%20%20%20%20%20%20%20%20%3Csection%20id%3D%22sec-lista%22%20class%3D%22hidden%20section-transition%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22bg-white%20p-6%20rounded-2xl%20shadow-xl%20border%20border-slate-100%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22flex%20flex-col%20md%3Aflex-row%20justify-between%20mb-6%20gap-4%20border-b%20pb-4%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Ch2%20id%3D%22tituloLista%22%20class%3D%22text-xl%20font-black%20text-malingas-green%20uppercase%22%3EGrados%20y%20Secciones%3C%2Fh2%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cp%20id%3D%22subtituloLista%22%20class%3D%22text-slate-400%20text-xs%20font-bold%20uppercase%22%3E%3C%2Fp%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cbutton%20id%3D%22btnVolverBloques%22%20onclick%3D%22window.cargarBloques()%22%20class%3D%22hidden%20bg-slate-100%20text-slate-600%20px-6%20py-2%20rounded-xl%20font-bold%20hover%3Abg-slate-200%20transition%20text-xs%20uppercase%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%E2%AC%85%EF%B8%8F%20Volver%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fbutton%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20id%3D%22contenedorBloques%22%20class%3D%22grid%20grid-cols-2%20md%3Agrid-cols-4%20gap-4%22%3E%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20id%3D%22vistaTablaAlumnos%22%20class%3D%22hidden%20mt-4%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22mb-4%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cinput%20type%3D%22text%22%20id%3D%22buscador%22%20onkeyup%3D%22window.filtrarAlumnos()%22%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20placeholder%3D%22%F0%9F%94%8D%20Buscar%20estudiante%20por%20nombre%20o%20DNI...%22%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20class%3D%22w-full%20p-3%20border-2%20border-green-100%20rounded-xl%20focus%3Aring-2%20focus%3Aring-green-600%20outline-none%20transition%20shadow-sm%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22overflow-x-auto%20bg-white%20rounded-xl%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Ctable%20class%3D%22w-full%20text-left%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cthead%3E%0A%20%20%20%20%3Ctr%20class%3D%22bg-green-50%20text-green-700%20text-%5B11px%5D%20font-black%20uppercase%20border-b-2%20border-green-100%22%3E%0A%20%20%20%20%20%20%20%20%3Cth%20class%3D%22p-4%22%3EDNI%3C%2Fth%3E%0A%20%20%20%20%20%20%20%20%3Cth%20class%3D%22p-4%22%3EEstudiante%3C%2Fth%3E%0A%20%20%20%20%20%20%20%20%3Cth%20class%3D%22p-4%20text-center%22%3EGrado%3C%2Fth%3E%0A%20%20%20%20%20%20%20%20%3Cth%20class%3D%22p-4%20text-center%22%3ESecci%C3%B3n%3C%2Fth%3E%0A%20%20%20%20%20%20%20%20%3Cth%20class%3D%22p-4%20text-center%22%3EAcciones%3C%2Fth%3E%0A%20%20%20%20%3C%2Ftr%3E%0A%3C%2Fthead%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Ctbody%20id%3D%22tablaAlumnos%22%20class%3D%22text-slate-600%20text-sm%22%3E%3C%2Ftbody%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Ftable%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%3C%2Fsection%3E%0A%0A%20%20%20%20%20%20%20%20%3Csection%20id%3D%22sec-asistencia%22%20class%3D%22hidden%20section-transition%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22mb-4%20flex%20items-center%20gap-3%20bg-green-50%20p-3%20rounded-xl%20border%20border-green-200%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Clabel%20class%3D%22text-xs%20font-bold%20text-green-800%20uppercase%22%3EConsultar%20Fecha%3A%3C%2Flabel%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cinput%20type%3D%22date%22%20id%3D%22fechaConsulta%22%20onchange%3D%22window.cambiarFechaAsistencia(this.value)%22%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20class%3D%22p-2%20border%20rounded-lg%20outline-none%20focus%3Aring-2%20focus%3Aring-green-600%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22bg-white%20p-6%20rounded-2xl%20shadow-xl%20border%20border-slate-100%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22flex%20flex-col%20md%3Aflex-row%20justify-between%20items-center%20mb-6%20border-b%20pb-4%20gap-4%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Ch2%20class%3D%22text-xl%20font-black%20text-slate-700%20uppercase%22%3EControl%20de%20Ingreso%20Hoy%3C%2Fh2%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20class%3D%22flex%20gap-2%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cbutton%20onclick%3D%22window.generarReportePDF()%22%20class%3D%22bg-emerald-600%20text-white%20px-4%20py-2%20rounded-xl%20shadow-lg%20hover%3Abg-emerald-700%20transition%20flex%20items-center%20gap-2%20text-xs%20font-bold%20uppercase%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cspan%3E%F0%9F%93%84%3C%2Fspan%3E%20PDF%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fbutton%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cbutton%20onclick%3D%22window.generarReporteExcel()%22%20class%3D%22bg-blue-600%20text-white%20px-4%20py-2%20rounded-xl%20shadow-lg%20hover%3Abg-blue-700%20transition%20flex%20items-center%20gap-2%20text-xs%20font-bold%20uppercase%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cspan%3E%F0%9F%93%8A%3C%2Fspan%3E%20Excel%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fbutton%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cbutton%20onclick%3D%22window.cerrarDia()%22%20class%3D%22bg-malingas-green%20text-white%20px-4%20py-2%20rounded-xl%20shadow-lg%20hover%3Abg-green-800%20transition%20text-xs%20font-bold%20uppercase%22%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20Finalizar%20D%C3%ADa%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fbutton%3E%20%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cdiv%20id%3D%22asistenciaHoy%22%20class%3D%22space-y-6%22%3E%0A%20%20%20%20%3Cdiv%20class%3D%22p-10%20text-center%20text-slate-400%20italic%20border-2%20border-dashed%20rounded-xl%22%3E%0A%20%20%20%20%20%20%20%20Cargando%20registros%20de%20asistencia...%0A%20%20%20%20%3C%2Fdiv%3E%0A%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3C%2Fdiv%3E%0A%20%20%20%20%20%20%20%20%3C%2Fsection%3E%0A%20%20%20%20%3C%2Fdiv%3E%0A%0A%20%20%20%20%3Cscript%20type%3D%22module%22%20src%3D%22app.js%22%3E%3C%2Fscript%3E%0A%20%20%20%20%0A%20%20%20%20%3Cscript%3E%0A%20%20%20%20%20%20%20%20%2F%2F%20Funci%C3%B3n%20de%20navegaci%C3%B3n%20simple%0A%20%20%20%20%20%20%20%20function%20mostrarSeccion(id)%20%7B%0A%20%20%20%20%20%20%20%20%20%20%20%20document.querySelectorAll(\'section\').forEach(s%20%3D%3E%20s.classList.add(\'hidden\'))%3B%0A%20%20%20%20%20%20%20%20%20%20%20%20const%20target%20%3D%20document.getElementById(\'sec-\'%20%2B%20id)%3B%0A%20%20%20%20%20%20%20%20%20%20%20%20if%20(target)%20%7B%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20target.classList.remove(\'hidden\')%3B%0A%20%20%20%20%20%20%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20%20%20%20%20%20%20if(id%20%3D%3D%3D%20\'lista\'%20%26%26%20typeof%20window.cargarBloques%20%3D%3D%3D%20\'function\')%20%7B%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20window.cargarBloques()%3B%0A%20%20%20%20%20%20%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20%20%20%20%20%20%20window.scrollTo(%7B%20top%3A%200%2C%20behavior%3A%20\'smooth\'%20%7D)%3B%0A%20%20%20%20%20%20%20%20%7D%0A%20%20%20%20%3C%2Fscript%3E%0A%3C%2Fbody%3E%0A%3C%2Fhtml%3E'));
-</script>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>I.E. Horacio Zeballos Gámez - Sistema de Asistencia</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+
+    <style>
+        body {
+            background-color: #d1fae5; 
+            background-image: linear-gradient(rgba(209, 250, 229, 0.93), rgba(209, 250, 229, 0.93)), url('logo_colegio.jpeg');
+            background-repeat: no-repeat;
+            background-position: center 30%;
+            background-size: 400px;
+            background-attachment: fixed;
+        }
+
+        .bg-malingas-green { background-color: #15803d; }
+        .text-malingas-green { color: #15803d; }
+        .border-malingas-green { border-color: #15803d; }
+
+        @media print {
+            body * { visibility: hidden; }
+            #printableArea, #printableArea * { visibility: visible; }
+            #printableArea { position: absolute; left: 0; top: 0; width: 100%; border: none !important; }
+            button { display: none !important; }
+        }
+        
+        .section-transition { transition: all 0.3s ease-in-out; }
+        
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #15803d; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans">
+
+    <nav class="bg-malingas-green text-white p-4 shadow-lg sticky top-0 z-50 border-b-4 border-white/20">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <img src="logo_colegio.jpeg" alt="Logo" class="h-12 w-12 rounded-full bg-white p-1 shadow-md">
+                <div>
+                    <h1 class="font-bold text-lg leading-tight uppercase">I.E. Horacio Zeballos Gámez</h1>
+                    <p class="text-[10px] tracking-[0.2em] opacity-90 font-semibold uppercase">Malingas - Tambogrande</p>
+                </div>
+            </div>
+            
+            <div class="flex gap-2">
+                <button onclick="mostrarSeccion('registro')" class="hover:bg-white/20 px-4 py-2 rounded-xl transition text-xs font-black uppercase">Registro</button>
+                <button onclick="mostrarSeccion('lista')" class="hover:bg-white/20 px-4 py-2 rounded-xl transition text-xs font-black uppercase">Alumnos</button>
+                <button onclick="mostrarSeccion('asistencia')" class="hover:bg-white/20 px-4 py-2 rounded-xl transition text-xs font-black uppercase flex items-center gap-1">
+                    <span>📋</span> Asistencia
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-6xl mx-auto p-4 md:p-6">
+        
+        <section id="sec-registro" class="grid grid-cols-1 md:grid-cols-2 gap-6 section-transition">
+            
+            <div class="space-y-6">
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                    <div class="flex items-center gap-2 mb-4 border-b pb-2">
+                        <span class="text-2xl">📝</span>
+                        <h2 class="text-lg font-bold text-slate-700 uppercase">Gestión de Alumnos</h2>
+                    </div>
+                    <form id="registroForm" class="space-y-4">
+                        <div class="flex gap-2">
+                            <input type="text" id="dni" placeholder="Documento DNI" maxlength="8" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+                            <button type="button" onclick="window.consultarDNI()" id="btnBuscarDNI" class="bg-blue-600 text-white px-4 rounded-xl font-bold hover:bg-blue-700 transition flex items-center justify-center min-w-[50px]">
+                                <span id="iconoBusqueda">🔍</span>
+                            </button>
+                        </div>
+                        <input type="text" id="nombres" placeholder="Nombres y Apellidos" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+                        <div class="grid grid-cols-2 gap-3">
+                            <input type="text" id="grado" placeholder="Grado (Ej: 5)" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition">
+                            <input type="text" id="seccion" placeholder="Sección (Ej: A)" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition">
+                        </div>
+                        <input type="tel" id="telefono" placeholder="WhatsApp Apoderado" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+                        <button type="submit" class="w-full bg-malingas-green text-white py-4 rounded-xl font-bold hover:bg-green-800 transition shadow-lg uppercase tracking-wider">
+                            💾 Guardar Alumno
+                        </button>
+                    </form>
+                </div>
+
+                <div class="bg-white p-6 rounded-2xl shadow-xl border-2 border-dashed border-blue-200">
+                    <div class="flex items-center gap-2 mb-4">
+    <img src="https://cdn-icons-png.flaticon.com/512/732/732220.png" class="h-6 w-6 object-contain" alt="Excel">
+    
+    <h2 class="text-sm font-black text-blue-700 uppercase tracking-tight">
+        Carga Masiva por excel
+    </h2>
+</div>
+                    <div class="space-y-4">
+                        <p class="text-[11px] text-slate-500 font-medium">Sube una archivo de lista del grado para registrar múltiples alumnos automáticamente (verificar al final por que puede a ver que falte un alumno).</p>
+                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
+    <input type="file" id="fotoMasiva" accept="image/*, .xlsx, .xls" 
+           class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer">
+    
+    <button onclick="window.escanearYRegistrarMasivo()" id="btnMasivo" 
+            class="w-full mt-4 bg-blue-600 text-white py-3 rounded-xl font-black text-xs uppercase hover:bg-blue-800 transition shadow-md">
+        Iniciar registro por excel
+    </button>
+</div>
+                        <div id="logRegistro" class="hidden h-32 overflow-y-auto bg-slate-900 text-green-400 font-mono text-[10px] p-3 rounded-xl custom-scroll"></div>
+                    </div>
+                </div>
+            </div>
+
+<div id="qrContainer" class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 flex flex-col items-center justify-center hidden">
+    <div id="printableArea" class="flex flex-col items-center p-6 border-4 border-double border-malingas-green rounded-3xl bg-white w-full max-w-[300px] shadow-sm">
+    <img src="logo_colegio.jpeg" class="h-10 mb-2">
+    <h3 class="text-sm font-black mb-4 text-malingas-green border-b w-full text-center pb-2 uppercase tracking-tighter">Carnet Estudiantil</h3>
+    
+    <div id="qrcode" class="bg-white p-2 border rounded-lg mb-4 max-w-[150px] mx-auto"></div>
+    
+    <div class="text-center space-y-1 w-full px-2">
+        <div class="mb-3 border-b pb-2 border-slate-100 overflow-hidden">
+            <p id="soloNombresMostrado" class="font-black text-2xl uppercase text-slate-800 leading-tight break-words max-w-full"></p>
+            <p id="soloApellidosMostrado" class="font-bold text-lg uppercase text-slate-600 leading-tight break-words max-w-full"></p>
+        </div>
+
+        <div class="flex justify-around text-malingas-green font-mono text-sm font-bold bg-green-50 p-2 rounded-lg">
+            <p id="dniMostrado"></p>
+            <p id="gradoSeccionMostrado"></p>
+        </div>
+
+        <p class="text-[9px] text-slate-400 font-bold uppercase mt-3 italic">Malingas: Disciplina, Lealtad, Honradez</p>
+    </div>
+</div>
+    <button onclick="window.imprimirCarnet(document.getElementById('dniMostrado').innerText.replace('DNI: ', ''))" 
+        class="mt-6 bg-emerald-600 text-white px-8 py-3 rounded-full font-black hover:bg-emerald-700 shadow-lg flex items-center gap-2 transition uppercase text-xs">
+        <span>🖨️</span> Imprimir Carnet
+    </button>
+</div>       
+ </section>
+
+        <section id="sec-lista" class="hidden section-transition">
+            <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                <div class="flex flex-col md:flex-row justify-between mb-6 gap-4 border-b pb-4">
+                    <div>
+                        <h2 id="tituloLista" class="text-xl font-black text-malingas-green uppercase">Grados y Secciones</h2>
+                        <p id="subtituloLista" class="text-slate-400 text-xs font-bold uppercase"></p>
+                    </div>
+                    <button id="btnVolverBloques" onclick="window.cargarBloques()" class="hidden bg-slate-100 text-slate-600 px-6 py-2 rounded-xl font-bold hover:bg-slate-200 transition text-xs uppercase">
+                        ⬅️ Volver
+                    </button>
+                </div>
+                <div id="contenedorBloques" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+                
+                <div id="vistaTablaAlumnos" class="hidden mt-4">
+                    <div class="mb-4">
+                        <input type="text" id="buscador" onkeyup="window.filtrarAlumnos()" 
+                               placeholder="🔍 Buscar estudiante por nombre o DNI..." 
+                               class="w-full p-3 border-2 border-green-100 rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition shadow-sm">
+                    </div>
+                    <div class="overflow-x-auto bg-white rounded-xl">
+                        <table class="w-full text-left">
+                            <thead>
+    <tr class="bg-green-50 text-green-700 text-[11px] font-black uppercase border-b-2 border-green-100">
+        <th class="p-4">DNI</th>
+        <th class="p-4">Estudiante</th>
+        <th class="p-4 text-center">Grado</th>
+        <th class="p-4 text-center">Sección</th>
+        <th class="p-4 text-center">Acciones</th>
+    </tr>
+</thead>
+                            <tbody id="tablaAlumnos" class="text-slate-600 text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="sec-asistencia" class="hidden section-transition">
+            <div class="mb-4 flex items-center gap-3 bg-green-50 p-3 rounded-xl border border-green-200">
+                <label class="text-xs font-bold text-green-800 uppercase">Consultar Fecha:</label>
+                <input type="date" id="fechaConsulta" onchange="window.cambiarFechaAsistencia(this.value)" 
+                       class="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-green-600">
+            </div>
+            <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 border-b pb-4 gap-4">
+                    <h2 class="text-xl font-black text-slate-700 uppercase">Control de Ingreso Hoy</h2>
+                    <div class="flex gap-2">
+                        <button onclick="window.generarReportePDF()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-emerald-700 transition flex items-center gap-2 text-xs font-bold uppercase">
+                            <span>📄</span> PDF
+                        </button>
+                        <button onclick="window.generarReporteExcel()" class="bg-blue-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-blue-700 transition flex items-center gap-2 text-xs font-bold uppercase">
+                            <span>📊</span> Excel
+                        </button>
+                        <button onclick="window.cerrarDia()" class="bg-malingas-green text-white px-4 py-2 rounded-xl shadow-lg hover:bg-green-800 transition text-xs font-bold uppercase">
+                            Finalizar Día
+                        </button>   
+                    </div>
+                </div>
+                <div id="asistenciaHoy" class="space-y-6">
+    <div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">
+        Cargando registros de asistencia...
+    </div>
+</div>
+            </div>
+        </section>
+    </div>
+
+    <script type="module" src="app.js"></script>
+    
+    <script>
+        // Función de navegación simple
+        function mostrarSeccion(id) {
+            document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
+            const target = document.getElementById('sec-' + id);
+            if (target) {
+                target.classList.remove('hidden');
+            }
+            if(id === 'lista' && typeof window.cargarBloques === 'function') {
+                window.cargarBloques();
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>
