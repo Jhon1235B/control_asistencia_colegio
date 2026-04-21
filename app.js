@@ -661,53 +661,70 @@ const enviarNotificacionUltraMsg = async (telefono, nombre, estado) => {
 
 // --- 6. GESTIÓN DE BLOQUES Y VISTA DE ALUMNOS ---
 window.cargarBloques = async () => {
-    const contenedor = document.getElementById('contenedorBloques');
+    const contenedorPrincipal = document.getElementById('contenedorBloques');
     const vistaTabla = document.getElementById('vistaTablaAlumnos');
     const btnVolver = document.getElementById('btnVolverBloques');
     const titulo = document.getElementById('tituloLista');
 
-    contenedor.classList.remove('hidden');
+    contenedorPrincipal.classList.remove('hidden');
     vistaTabla.classList.add('hidden');
     btnVolver.classList.add('hidden');
     titulo.innerText = "Grados y Secciones";
     
-    // Agrega un mensaje de carga
-    contenedor.innerHTML = "<p class='col-span-full text-center text-slate-500'>Cargando grados...</p>";
+    contenedorPrincipal.innerHTML = "<p class='col-span-full text-center text-slate-500'>Cargando grados...</p>";
 
     try {
         const snap = await getDocs(collection(db, "alumnos"));
-        
         if (snap.empty) {
-            contenedor.innerHTML = "<p class='col-span-full text-center text-red-500 font-bold'>No hay alumnos registrados.</p>";
+            contenedorPrincipal.innerHTML = "<p class='col-span-full text-center text-red-500 font-bold'>No hay alumnos registrados.</p>";
             return;
         }
 
-        const gradosSet = new Set();
+        // 1. Agrupamos por número de grado
+        const gradosAgrupados = {};
         snap.forEach(doc => {
             const data = doc.data();
-            // Verifica que existan estos campos exactos en tus documentos de Firebase
             if (data.grado && data.seccion) {
-                gradosSet.add(`${data.grado}${data.seccion}`.toUpperCase());
+                const gradoNum = data.grado; // Ej: "1"
+                if (!gradosAgrupados[gradoNum]) gradosAgrupados[gradoNum] = new Set();
+                gradosAgrupados[gradoNum].add(`${data.grado}${data.seccion}`.toUpperCase());
             }
         });
 
-        contenedor.innerHTML = ""; // Limpiamos el mensaje de carga
-        
-        if (gradosSet.size === 0) {
-            contenedor.innerHTML = "<p class='col-span-full text-center text-orange-500'>Los alumnos registrados no tienen Grado o Sección asignados.</p>";
-        }
+        contenedorPrincipal.innerHTML = ""; // Limpiamos carga
+        // Forzamos a que el contenedor principal sea una sola columna de filas
+        contenedorPrincipal.className = "flex flex-col gap-8"; 
 
-        Array.from(gradosSet).sort().forEach(gradoSec => {
-            contenedor.innerHTML += `
-                <button onclick="window.verAlumnosGrado('${gradoSec}')" 
-                    class="bg-white border-2 border-green-100 p-8 rounded-2xl hover:bg-green-600 hover:text-white transition-all transform hover:scale-105 shadow-md text-center">
-                    <span class="block text-3xl font-black text-green-800">${gradoSec}</span>
-                    <span class="text-[10px] font-bold uppercase opacity-60">Ver Alumnos</span>
-                </button>`;
+        // 2. Iteramos sobre los grados ordenados (1, 2, 3...)
+        Object.keys(gradosAgrupados).sort().forEach(gradoNum => {
+            const filaDiv = document.createElement('div');
+            filaDiv.className = "space-y-3";
+            
+            // Título de la fila
+            filaDiv.innerHTML = `<h3 class="text-malingas-green font-black text-sm border-l-4 border-malingas-green pl-2">GRADO: ${gradoNum}°</h3>`;
+            
+            // Contenedor de las tarjetas de esa fila
+            const gridFila = document.createElement('div');
+            gridFila.className = "grid grid-cols-2 md:grid-cols-5 gap-4"; // Aquí caben hasta 5 secciones por fila
+
+            const seccionesOrdenadas = Array.from(gradosAgrupados[gradoNum]).sort();
+            
+            seccionesOrdenadas.forEach(gradoSec => {
+                gridFila.innerHTML += `
+                    <button onclick="window.verAlumnosGrado('${gradoSec}')" 
+                        class="bg-white border-2 border-green-100 p-6 rounded-2xl hover:bg-green-600 hover:text-white transition-all transform hover:scale-105 shadow-sm text-center">
+                        <span class="block text-2xl font-black text-green-800">${gradoSec}</span>
+                        <span class="text-[9px] font-bold uppercase opacity-60">Ver Alumnos</span>
+                    </button>`;
+            });
+
+            filaDiv.appendChild(gridFila);
+            contenedorPrincipal.appendChild(filaDiv);
         });
+
     } catch (e) { 
         console.error("Error al cargar bloques:", e);
-        contenedor.innerHTML = `<p class='col-span-full text-center text-red-500'>Error de conexión: ${e.message}</p>`;
+        contenedorPrincipal.innerHTML = `<p class='text-red-500'>Error: ${e.message}</p>`;
     }
 };
 
