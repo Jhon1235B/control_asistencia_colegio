@@ -852,29 +852,53 @@ window.editarAlumno = (dni, nombres, grado, seccion, telefono) => {
 window.eliminarAlumno = async (id) => { if(confirm("¿Eliminar?")) await deleteDoc(doc(db, "alumnos", id)); };
 
 window.justificarFalta = async (dni, nombre) => {
-    const n = prompt(`Cambiar estado para ${nombre}:\n1. Puntual\n2. Tardanza\n3. Tardanza Justificada\n4. Falta Justificada\n5. Falta`, "4");
-    const estados = ["", "Puntual", "Tardanza", "Tardanza Justificada", "Falta Justificada", "Falta"];
+    // 1. Definimos las opciones del prompt
+    const n = prompt(`Cambiar estado para ${nombre.toUpperCase()}:\n1. Puntual\n2. Tardanza\n3. Salida por Salud\n4. Tardanza Justificada\n5. Falta Justificada\n6. Falta`, "5");
+    
+    // Obtenemos la hora actual para el registro de salida
+    const ahora = new Date();
+    const horaSalida = ahora.toLocaleTimeString('en-GB'); // Formato HH:MM:SS
+
+    // 2. Mapeo de estados (Aseguramos que el índice coincida con el número ingresado)
+    const estados = [
+        "", 
+        "Puntual", 
+        "Tardanza", 
+        `Salida por Salud (${horaSalida})`, // Inyectamos la hora aquí
+        "Tardanza Justificada", 
+        "Falta Justificada", 
+        "Falta"
+    ];
+    
     const nuevoEstado = estados[n];
 
     if (!nuevoEstado) return;
-    const hoy = new Date().toLocaleDateString('en-CA');
+    
+    // Obtenemos la fecha del input de consulta o la fecha de hoy
+    const hoy = document.getElementById('fechaConsulta')?.value || new Date().toLocaleDateString('en-CA');
 
     try {
-        // 1. Actualizar estado
+        // 3. Actualizar en Firebase
         await setDoc(doc(db, "asistencia", hoy, "registros", dni), { 
             estado: nuevoEstado 
         }, { merge: true });
 
-        // 2. RECUPERAR TELÉFONO DEL ALUMNO (Paso clave)
+        // 4. Recuperar teléfono y enviar notificación
         const docAlu = await getDoc(doc(db, "alumnos", dni));
         if (docAlu.exists() && docAlu.data().telefono) {
             const tel = docAlu.data().telefono;
-            const msj = `*ACTUALIZACIÓN*\n\nSe informa que la asistencia de *${nombre}* ha sido actualizada a: *${nuevoEstado.toUpperCase()}*.\n\n_I.E. Horacio Zeballos Gámez_`;
+            const msj = `*ACTUALIZACIÓN INSTITUCIONAL*\n\nSe informa que la situación de *${nombre.toUpperCase()}* ha sido actualizada a: *${nuevoEstado.toUpperCase()}*.\n\n_I.E. Horacio Zeballos Gámez_`;
             
             await window.enviarNotificacionUltraMsg(tel, nombre, nuevoEstado, msj);
-            alert("Estado actualizado y padre notificado.");
+            alert(`✅ Estado actualizado: ${nuevoEstado}\nPadre notificado con éxito.`);
+            
+            // Refrescar la vista si la función existe
+            if(typeof window.actualizarVistaAsistencia === 'function') window.actualizarVistaAsistencia();
         }
-    } catch (e) { alert("Error al actualizar."); }
+    } catch (e) { 
+        console.error(e);
+        alert("❌ Error al actualizar en la base de datos."); 
+    }
 };
 
 window.enviarNotificacionUltraMsg = async (telefono, nombre, estado, mensajePersonalizado = null) => {
