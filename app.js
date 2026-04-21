@@ -712,7 +712,7 @@ window.cargarBloques = async () => {
 };
 
 // CRÍTICO: Esta función debe ser window. para que el HTML la detecte
-// --- VARIABLES GLOBALES DE PAGINACIÓN ---
+let alumnosTodosMemoria = [];
 let alumnosFiltradosMemoria = [];
 let paginaActualAlumnos = 1;
 const filasPorPagina = 10;
@@ -724,7 +724,6 @@ window.verAlumnosGrado = (gradoSecSeleccionado) => {
     const btnVolver = document.getElementById('btnVolverBloques');
     const titulo = document.getElementById('tituloLista');
     
-    gradoSeleccionadoActual = gradoSecSeleccionado;
     contenedor.classList.add('hidden');
     vistaTabla.classList.remove('hidden');
     btnVolver.classList.remove('hidden');
@@ -732,28 +731,26 @@ window.verAlumnosGrado = (gradoSecSeleccionado) => {
 
     // Escucha en tiempo real
     onSnapshot(collection(db, "alumnos"), (snapshot) => {
-    alumnosFiltradosMemoria = [];
-    
-    snapshot.forEach(docSnap => {
-        const a = docSnap.data();
-        const combinacion = `${a.grado}${a.seccion}`.toUpperCase();
+        alumnosTodosMemoria = []; // Limpiamos el respaldo
         
-        if (combinacion === gradoSecSeleccionado) {
-            alumnosFiltradosMemoria.push({ id: docSnap.id, ...a });
-        }
-    });
-
-    // --- CORRECCIÓN: ORDENAMIENTO NATURAL (Numérico + Texto) ---
-    alumnosFiltradosMemoria.sort((a, b) => {
-        return a.nombres.localeCompare(b.nombres, undefined, {
-            numeric: true,
-            sensitivity: 'base'
+        snapshot.forEach(docSnap => {
+            const a = docSnap.data();
+            const combinacion = `${a.grado}${a.seccion}`.toUpperCase();
+            
+            if (combinacion === gradoSecSeleccionado) {
+                alumnosTodosMemoria.push({ id: docSnap.id, ...a });
+            }
         });
-    });
 
-    paginaActualAlumnos = 1; 
-    renderizarTablaConPaginacion();
-});
+        // Ordenamos el respaldo original
+        alumnosTodosMemoria.sort((a, b) => a.nombres.localeCompare(b.nombres));
+
+        // Al cargar por primera vez, los filtrados son iguales a todos
+        alumnosFiltradosMemoria = [...alumnosTodosMemoria]; 
+        
+        paginaActualAlumnos = 1; 
+        renderizarTablaConPaginacion();
+    });
 };
 
 function renderizarTablaConPaginacion() {
@@ -938,12 +935,20 @@ window.ajustarTextoDinámico = (elementoId) => {
 
 // --- FUNCIÓN DE BÚSQUEDA ---
 window.filtrarAlumnos = () => {
-    const texto = document.getElementById('buscador').value.toLowerCase();
-    // alumnosFiltradosMemoria ya tiene todos los alumnos del grado
-    alumnosFiltradosMemoria = alumnosTodosMemoria.filter(a =>
-        a.nombres.toLowerCase().includes(texto) || a.dni.includes(texto)
-    );
-    paginaActualAlumnos = 1;
+    const texto = document.getElementById('buscador').value.toLowerCase().trim();
+
+    if (texto === "") {
+        // Si el buscador está vacío, mostramos todos de nuevo
+        alumnosFiltradosMemoria = [...alumnosTodosMemoria];
+    } else {
+        // Filtramos sobre el respaldo original 'alumnosTodosMemoria'
+        alumnosFiltradosMemoria = alumnosTodosMemoria.filter(a =>
+            (a.nombres && a.nombres.toLowerCase().includes(texto)) || 
+            (a.dni && a.dni.includes(texto))
+        );
+    }
+    
+    paginaActualAlumnos = 1; // Reiniciamos a la página 1 para ver los resultados
     renderizarTablaConPaginacion();
 };
 
