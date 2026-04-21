@@ -392,17 +392,16 @@ window.imprimirCarnet = async (dni) => {
         if (!docAlu.exists()) return alert("Error al recuperar datos");
         
         const a = docAlu.data();
-        
-        // Lógica de separación de nombres y apellidos
         const palabras = (a.nombres || "").trim().split(' ');
-        let nom = "";
-        let ape = "";
+        let nom = "", ape = "";
+
+        // Lógica de separación de nombres/apellidos institucional
         if (palabras.length >= 3) {
-            nom = palabras.slice(0, 2).join(' ');
-            ape = palabras.slice(2).join(' ');
+            nom = palabras.slice(2).join(' '); // Nombres al final
+            ape = palabras.slice(0, 2).join(' '); // Apellidos al inicio
         } else {
-            nom = palabras[0] || "";
-            ape = palabras.slice(1).join(' ') || "";
+            ape = palabras[0] || "";
+            nom = palabras.slice(1).join(' ') || "";
         }
 
         const ventana = window.open('', '', 'height=600,width=800');
@@ -411,67 +410,88 @@ window.imprimirCarnet = async (dni) => {
             <head>
                 <title>Carnet - ${a.nombres}</title>
                 <style>
-                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #eee; }
+                    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap');
+                    body { font-family: 'Roboto', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f3f4f6; }
+                    
                     .carnet { 
-                        width: 8.5cm; height: 5.4cm; 
-                        background: white; border: 2.5px solid #15803D; 
-                        border-radius: 14px; position: relative; overflow: hidden;
-                        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+                        width: 8.6cm; height: 5.4cm; 
+                        background: white; border-radius: 15px; position: relative; overflow: hidden;
+                        box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #ccc;
                     }
-                    .cabecera { background: #15803D; color: white; padding: 8px; text-align: center; font-size: 11px; font-weight: 900; text-transform: uppercase; }
-                    .logo { position: absolute; top: 45px; left: 12px; width: 48px; height: 48px; object-fit: contain; }
-                    
-                    /* CONTENEDOR DE TEXTO: Limitamos el ancho para que no choque con el QR */
-                    .info { 
-                        position: absolute; top: 45px; left: 70px; 
-                        width: 160px; /* Ancho máximo para no tocar el QR */
-                        text-align: left;
+
+                    /* ENCABEZADO VERDE SÓLIDO */
+                    .cabecera { 
+                        background: #15803D; color: white; padding: 10px; text-align: center; 
+                        font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;
                     }
-                    .label { font-size: 7px; color: #15803D; font-weight: bold; text-transform: uppercase; }
+
+                    /* CUERPO DEL CARNET */
+                    .contenido { display: flex; padding: 15px; align-items: flex-start; justify-content: space-between; }
+
+                    .logo-seccion { width: 60px; text-align: center; }
+                    .logo-img { width: 55px; height: auto; margin-top: 5px; }
+
+                    .info-estudiante { flex-grow: 1; padding-left: 15px; margin-top: 5px; }
+                    .label-est { font-size: 8px; color: #15803D; font-weight: bold; margin-bottom: 2px; }
+                    .apellido-val { font-size: 15px; color: #111; font-weight: 900; line-height: 1; text-transform: uppercase; }
+                    .nombre-val { font-size: 12px; color: #444; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; }
                     
-                    /* AJUSTE DE NOMBRES Y APELLIDOS */
-                    .nombre { font-size: 14px; color: #111; font-weight: 900; text-transform: uppercase; line-height: 1.1; word-wrap: break-word; }
-                    .apellido { font-size: 11px; color: #444; font-weight: 700; text-transform: uppercase; margin-top: 2px; word-wrap: break-word; }
-                    
-                    .dni-val { font-size: 10px; color: #15803D; margin-top: 10px; font-weight: bold; display: block; }
-                    .grado-val { font-size: 10px; color: #15803D; font-weight: 800; display: block; margin-top: 2px; }
-                    
-                    /* POSICIÓN DEL QR */
+                    .datos-linea { font-size: 11px; font-weight: 900; color: #15803D; margin-top: 4px; }
+                    .datos-linea span { color: #333; margin-left: 3px; }
+
+                    /* QR POSICIONADO A LA DERECHA */
                     .qr-box { 
-                        position: absolute; right: 12px; top: 45px; 
-                        border: 1px solid #ddd; padding: 4px; border-radius: 8px; background: white;
+                        width: 85px; height: 85px; background: white; 
+                        padding: 5px; border: 1.5px solid #eee; border-radius: 10px;
+                        display: flex; justify-content: center; align-items: center;
                     }
-                    
-                    .footer { position: absolute; bottom: 0; width: 100%; background: #f0fdf4; text-align: center; font-size: 9px; color: #15803D; font-weight: bold; padding: 6px 0; border-top: 1px solid #eee; }
-                    
+
+                    /* PIE DE PÁGINA */
+                    .footer { 
+                        position: absolute; bottom: 0; width: 100%; background: #f0fdf4; 
+                        text-align: center; font-size: 9px; color: #15803D; font-weight: 900; 
+                        padding: 6px 0; border-top: 1px solid #dcfce7;
+                    }
+
                     @media print { 
                         body { background: none; } 
-                        .carnet { border: 2px solid #15803D !important; -webkit-print-color-adjust: exact; } 
+                        .carnet { box-shadow: none; -webkit-print-color-adjust: exact; } 
                     }
                 </style>
             </head>
             <body>
                 <div class="carnet">
                     <div class="cabecera">I.E. HORACIO ZEBALLOS GÁMEZ - MALINGAS</div>
-                    <img src="logo_colegio.jpeg" class="logo">
                     
-                    <div class="info">
-                        <div class="label">Estudiante:</div>
-                        <div class="nombre">${nom}</div>
-                        <div class="apellido">${ape}</div>
-                        <span class="dni-val">DNI: ${a.dni}</span>
-                        <span class="grado-val">AULA: ${a.grado || '-'}° "${a.seccion || '-'}"</span>
-                    </div>
+                    <div class="contenido">
+                        <div class="logo-seccion">
+                            <img src="logo_colegio.jpeg" class="logo-img">
+                        </div>
 
-                    <div class="qr-box">
-                        <div id="qr"></div>
+                        <div class="info-estudiante">
+                            <div class="label-est">ESTUDIANTE:</div>
+                            <div class="apellido-val">${ape}</div>
+                            <div class="nombre-val">${nom}</div>
+                            
+                            <div class="datos-linea">DNI: <span>${a.dni}</span></div>
+                            <div class="datos-linea">AULA: <span>${a.grado || '-'}° "${a.seccion || '-'}"</span></div>
+                        </div>
+
+                        <div class="qr-box">
+                            <div id="qr"></div>
+                        </div>
                     </div>
 
                     <div class="footer">DISCIPLINA • LEALTAD • HONRADEZ</div>
                 </div>
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
                 <script>
-                    new QRCode(document.getElementById("qr"), { text: "${a.dni}", width: 80, height: 80 });
+                    new QRCode(document.getElementById("qr"), { 
+                        text: "${a.dni}", 
+                        width: 80, 
+                        height: 80,
+                        correctLevel : QRCode.CorrectLevel.H
+                    });
                     setTimeout(() => { window.print(); window.close(); }, 800);
                 </script>
             </body>
@@ -481,7 +501,7 @@ window.imprimirCarnet = async (dni) => {
         
     } catch (e) {
         console.error(e);
-        alert("Error al generar impresión");
+        alert("Error al generar impresión del carnet");
     }
 };
 
