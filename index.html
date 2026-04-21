@@ -11,10 +11,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     
-<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
-    <script type="module" src="app.js"></script>
-</body>
-
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    
     <style>
         body {
             background-color: #d1fae5; 
@@ -67,7 +65,6 @@
     <div class="max-w-6xl mx-auto p-4 md:p-6">
         
         <section id="sec-registro" class="grid grid-cols-1 md:grid-cols-2 gap-6 section-transition">
-            
             <div class="space-y-6">
                 <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
                     <div class="flex items-center gap-2 mb-4 border-b pb-2">
@@ -95,86 +92,73 @@
 
                 <div class="bg-white p-6 rounded-2xl shadow-xl border-2 border-dashed border-blue-200">
                     <div class="flex items-center gap-2 mb-4">
-    <img src="https://cdn-icons-png.flaticon.com/512/732/732220.png" class="h-6 w-6 object-contain" alt="Excel">
-    
-    <h2 class="text-sm font-black text-blue-700 uppercase tracking-tight">
-        Carga Masiva por excel
-    </h2>
-</div>
+                        <img src="https://cdn-icons-png.flaticon.com/512/732/732220.png" class="h-6 w-6 object-contain" alt="Excel">
+                        <h2 class="text-sm font-black text-blue-700 uppercase tracking-tight">Carga Masiva por excel</h2>
+                    </div>
                     <div class="space-y-4">
-                        <p class="text-[11px] text-slate-500 font-medium">Sube una archivo de lista del grado para registrar múltiples alumnos automáticamente (verificar al final por que puede a ver que falte un alumno).</p>
+                        <p class="text-[11px] text-slate-500 font-medium">Sube una archivo de lista del grado para registrar múltiples alumnos automáticamente.</p>
                         <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
-    <input type="file" id="fotoMasiva" accept="image/*, .xlsx, .xls" 
-           class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer">
-    
-    <button onclick="window.escanearYRegistrarMasivo()" id="btnMasivo" 
-            class="w-full mt-4 bg-blue-600 text-white py-3 rounded-xl font-black text-xs uppercase hover:bg-blue-800 transition shadow-md">
-        Iniciar registro por excel
-    </button>
-</div>
+                            <input type="file" id="fotoMasiva" accept="image/*, .xlsx, .xls" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer">
+                            <button onclick="window.escanearYRegistrarMasivo()" id="btnMasivo" class="w-full mt-4 bg-blue-600 text-white py-3 rounded-xl font-black text-xs uppercase hover:bg-blue-800 transition shadow-md">Iniciar registro por excel</button>
+                        </div>
                         <div id="logRegistro" class="hidden h-32 overflow-y-auto bg-slate-900 text-green-400 font-mono text-[10px] p-3 rounded-xl custom-scroll"></div>
                     </div>
                 </div>
             </div>
 
-<div id="qrContainer" class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 flex flex-col items-center justify-center hidden">
-    <div id="printableArea" class="flex flex-col items-center p-6 border-4 border-double border-malingas-green rounded-3xl bg-white w-full max-w-[300px] shadow-sm">
-    <img src="logo_colegio.jpeg" class="h-10 mb-2">
-    <h3 class="text-sm font-black mb-4 text-malingas-green border-b w-full text-center pb-2 uppercase tracking-tighter">Carnet Estudiantil</h3>
-    
-    <div id="qrcode" class="bg-white p-2 border rounded-lg mb-4 max-w-[150px] mx-auto"></div>
-    
-    <div class="text-center space-y-1 w-full px-2">
-        <div class="mb-3 border-b pb-2 border-slate-100 overflow-hidden">
-            <p id="soloNombresMostrado" class="font-black text-2xl uppercase text-slate-800 leading-tight break-words max-w-full"></p>
-            <p id="soloApellidosMostrado" class="font-bold text-lg uppercase text-slate-600 leading-tight break-words max-w-full"></p>
-        </div>
-
-        <div class="flex justify-around text-malingas-green font-mono text-sm font-bold bg-green-50 p-2 rounded-lg">
-            <p id="dniMostrado"></p>
-            <p id="gradoSeccionMostrado"></p>
-        </div>
-
-        <p class="text-[9px] text-slate-400 font-bold uppercase mt-3 italic">Malingas: Disciplina, Lealtad, Honradez</p>
-    </div>
-</div>
-    <button onclick="window.imprimirCarnet(document.getElementById('dniMostrado').innerText.replace('DNI: ', ''))" 
-        class="mt-6 bg-emerald-600 text-white px-8 py-3 rounded-full font-black hover:bg-emerald-700 shadow-lg flex items-center gap-2 transition uppercase text-xs">
-        <span>🖨️</span> Imprimir Carnet
-    </button>
-</div>       
- </section>
+            <div id="qrContainer" class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 flex flex-col items-center justify-center hidden">
+                <div id="printableArea" class="flex flex-col items-center p-6 border-4 border-double border-malingas-green rounded-3xl bg-white w-full max-w-[300px] shadow-sm">
+                    <img src="logo_colegio.jpeg" class="h-10 mb-2">
+                    <h3 class="text-sm font-black mb-4 text-malingas-green border-b w-full text-center pb-2 uppercase tracking-tighter">Carnet Estudiantil</h3>
+                    <div id="qrcode" class="bg-white p-2 border rounded-lg mb-4 max-w-[150px] mx-auto"></div>
+                    <div class="text-center space-y-1 w-full px-2">
+                        <div class="mb-3 border-b pb-2 border-slate-100 overflow-hidden">
+                            <p id="soloNombresMostrado" class="font-black text-2xl uppercase text-slate-800 leading-tight break-words max-w-full"></p>
+                            <p id="soloApellidosMostrado" class="font-bold text-lg uppercase text-slate-600 leading-tight break-words max-w-full"></p>
+                        </div>
+                        <div class="flex justify-around text-malingas-green font-mono text-sm font-bold bg-green-50 p-2 rounded-lg">
+                            <p id="dniMostrado"></p>
+                            <p id="gradoSeccionMostrado"></p>
+                        </div>
+                        <p class="text-[9px] text-slate-400 font-bold uppercase mt-3 italic">Malingas: Disciplina, Lealtad, Honradez</p>
+                    </div>
+                </div>
+                <button onclick="window.imprimirCarnet(document.getElementById('dniMostrado').innerText.replace('DNI: ', ''))" class="mt-6 bg-emerald-600 text-white px-8 py-3 rounded-full font-black hover:bg-emerald-700 shadow-lg flex items-center gap-2 transition uppercase text-xs"><span>🖨️</span> Imprimir Carnet</button>
+            </div>       
+        </section>
 
         <section id="sec-lista" class="hidden section-transition">
             <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
                 <div class="flex flex-col md:flex-row justify-between mb-6 gap-4 border-b pb-4">
-                    <div>
-                        <h2 id="tituloLista" class="text-xl font-black text-malingas-green uppercase">Grados y Secciones</h2>
-                        <p id="subtituloLista" class="text-slate-400 text-xs font-bold uppercase"></p>
+                    <div class="flex items-center gap-4">
+                        <div>
+                            <h2 id="tituloLista" class="text-xl font-black text-malingas-green uppercase">Grados y Secciones</h2>
+                            <p id="subtituloLista" class="text-slate-400 text-xs font-bold uppercase"></p>
+                        </div>
+                        <button id="btnImprimirTodoGrado" onclick="window.imprimirTodosLosCarnets()" 
+                                class="hidden bg-orange-600 text-white px-4 py-2 rounded-xl font-bold text-[10px] hover:bg-orange-700 transition shadow-lg flex items-center gap-2 uppercase">
+                            <span>🖨️</span> Imprimir Todo el Grado
+                        </button>
                     </div>
-                    <button id="btnVolverBloques" onclick="window.cargarBloques()" class="hidden bg-slate-100 text-slate-600 px-6 py-2 rounded-xl font-bold hover:bg-slate-200 transition text-xs uppercase">
-                        ⬅️ Volver
-                    </button>
+                    <button id="btnVolverBloques" onclick="window.cargarBloques()" class="hidden bg-slate-100 text-slate-600 px-6 py-2 rounded-xl font-bold hover:bg-slate-200 transition text-xs uppercase">⬅️ Volver</button>
                 </div>
                 <div id="contenedorBloques" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
                 
                 <div id="vistaTablaAlumnos" class="hidden mt-4">
                     <div class="mb-4">
-                        <input type="text" id="buscador" onkeyup="window.filtrarAlumnos()" 
-                               placeholder="🔍 Buscar estudiante por nombre o DNI..." 
-                               class="w-full p-3 border-2 border-green-100 rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition shadow-sm">
+                        <input type="text" id="buscador" onkeyup="window.filtrarAlumnos()" placeholder="🔍 Buscar estudiante por nombre o DNI..." class="w-full p-3 border-2 border-green-100 rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition shadow-sm">
                     </div>
                     <div class="overflow-x-auto bg-white rounded-xl">
                         <table class="w-full text-left">
                             <thead>
-    <tr class="bg-green-50 text-green-700 text-[11px] font-black uppercase border-b-2 border-green-100">
-        <th class="p-4">DNI</th>
-        <th class="p-4">Estudiante</th>
-        <th class="p-4 text-center">Grado</th>
-        <th class="p-4 text-center">Sección</th>
-        <th class="p-4 text-center">Acciones</th>
-    </tr>
-</thead>
+                                <tr class="bg-green-50 text-green-700 text-[11px] font-black uppercase border-b-2 border-green-100">
+                                    <th class="p-4">DNI</th>
+                                    <th class="p-4">Estudiante</th>
+                                    <th class="p-4 text-center">Grado</th>
+                                    <th class="p-4 text-center">Sección</th>
+                                    <th class="p-4 text-center">Acciones</th>
+                                </tr>
+                            </thead>
                             <tbody id="tablaAlumnos" class="text-slate-600 text-sm"></tbody>
                         </table>
                     </div>
@@ -185,29 +169,20 @@
         <section id="sec-asistencia" class="hidden section-transition">
             <div class="mb-4 flex items-center gap-3 bg-green-50 p-3 rounded-xl border border-green-200">
                 <label class="text-xs font-bold text-green-800 uppercase">Consultar Fecha:</label>
-                <input type="date" id="fechaConsulta" onchange="window.cambiarFechaAsistencia(this.value)" 
-                       class="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-green-600">
+                <input type="date" id="fechaConsulta" onchange="window.cambiarFechaAsistencia(this.value)" class="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-green-600">
             </div>
             <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
                 <div class="flex flex-col md:flex-row justify-between items-center mb-6 border-b pb-4 gap-4">
                     <h2 class="text-xl font-black text-slate-700 uppercase">Control de Ingreso Hoy</h2>
                     <div class="flex gap-2">
-                        <button onclick="window.generarReportePDF()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-emerald-700 transition flex items-center gap-2 text-xs font-bold uppercase">
-                            <span>📄</span> PDF
-                        </button>
-                        <button onclick="window.generarReporteExcel()" class="bg-blue-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-blue-700 transition flex items-center gap-2 text-xs font-bold uppercase">
-                            <span>📊</span> Excel
-                        </button>
-                        <button onclick="window.cerrarDia()" class="bg-malingas-green text-white px-4 py-2 rounded-xl shadow-lg hover:bg-green-800 transition text-xs font-bold uppercase">
-                            Finalizar Día
-                        </button>   
+                        <button onclick="window.generarReportePDF()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-emerald-700 transition flex items-center gap-2 text-xs font-bold uppercase"><span>📄</span> PDF</button>
+                        <button onclick="window.generarReporteExcel()" class="bg-blue-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-blue-700 transition flex items-center gap-2 text-xs font-bold uppercase"><span>📊</span> Excel</button>
+                        <button onclick="window.cerrarDia()" class="bg-malingas-green text-white px-4 py-2 rounded-xl shadow-lg hover:bg-green-800 transition text-xs font-bold uppercase">Finalizar Día</button>   
                     </div>
                 </div>
                 <div id="asistenciaHoy" class="space-y-6">
-    <div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">
-        Cargando registros de asistencia...
-    </div>
-</div>
+                    <div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">Cargando registros de asistencia...</div>
+                </div>
             </div>
         </section>
     </div>
@@ -215,7 +190,6 @@
     <script type="module" src="app.js"></script>
     
     <script>
-        // Función de navegación simple
         function mostrarSeccion(id) {
             document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
             const target = document.getElementById('sec-' + id);

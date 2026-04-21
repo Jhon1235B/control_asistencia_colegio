@@ -685,10 +685,16 @@ window.cargarBloques = async () => {
     const vistaTabla = document.getElementById('vistaTablaAlumnos');
     const btnVolver = document.getElementById('btnVolverBloques');
     const titulo = document.getElementById('tituloLista');
+    // Referencia al botón de impresión masiva
+    const btnImprimirTodo = document.getElementById('btnImprimirTodoGrado');
 
     contenedorPrincipal.classList.remove('hidden');
     vistaTabla.classList.add('hidden');
     btnVolver.classList.add('hidden');
+    
+    // OCULTAR botón de impresión masiva en la vista general
+    if (btnImprimirTodo) btnImprimirTodo.classList.add('hidden');
+
     titulo.innerText = "Grados y Secciones";
     
     contenedorPrincipal.innerHTML = "<p class='col-span-full text-center text-slate-500'>Cargando grados...</p>";
@@ -700,32 +706,26 @@ window.cargarBloques = async () => {
             return;
         }
 
-        // 1. Agrupamos por número de grado
         const gradosAgrupados = {};
         snap.forEach(doc => {
             const data = doc.data();
             if (data.grado && data.seccion) {
-                const gradoNum = data.grado; // Ej: "1"
+                const gradoNum = data.grado;
                 if (!gradosAgrupados[gradoNum]) gradosAgrupados[gradoNum] = new Set();
                 gradosAgrupados[gradoNum].add(`${data.grado}${data.seccion}`.toUpperCase());
             }
         });
 
-        contenedorPrincipal.innerHTML = ""; // Limpiamos carga
-        // Forzamos a que el contenedor principal sea una sola columna de filas
+        contenedorPrincipal.innerHTML = ""; 
         contenedorPrincipal.className = "flex flex-col gap-8"; 
 
-        // 2. Iteramos sobre los grados ordenados (1, 2, 3...)
         Object.keys(gradosAgrupados).sort().forEach(gradoNum => {
             const filaDiv = document.createElement('div');
             filaDiv.className = "space-y-3";
-            
-            // Título de la fila
             filaDiv.innerHTML = `<h3 class="text-malingas-green font-black text-sm border-l-4 border-malingas-green pl-2">GRADO: ${gradoNum}°</h3>`;
             
-            // Contenedor de las tarjetas de esa fila
             const gridFila = document.createElement('div');
-            gridFila.className = "grid grid-cols-2 md:grid-cols-5 gap-4"; // Aquí caben hasta 5 secciones por fila
+            gridFila.className = "grid grid-cols-2 md:grid-cols-5 gap-4";
 
             const seccionesOrdenadas = Array.from(gradosAgrupados[gradoNum]).sort();
             
@@ -748,6 +748,107 @@ window.cargarBloques = async () => {
     }
 };
 
+window.imprimirTodosLosCarnets = () => {
+    if (alumnosFiltradosMemoria.length === 0) return alert("No hay alumnos cargados en este grado.");
+
+    const ventana = window.open('', '', 'height=800,width=1000');
+    
+    // Generamos el contenido de todos los carnets
+    let contenidoCarnets = '';
+    
+    alumnosFiltradosMemoria.forEach(a => {
+        const palabras = (a.nombres || "").trim().split(' ');
+        let nom = "", ape = "";
+        if (palabras.length >= 3) {
+            nom = palabras.slice(2).join(' ');
+            ape = palabras.slice(0, 2).join(' ');
+        } else {
+            ape = palabras[0] || "";
+            nom = palabras.slice(1).join(' ') || "";
+        }
+
+        contenidoCarnets += `
+            <div class="carnet">
+                <div class="cabecera">I.E. HORACIO ZEBALLOS GÁMEZ - MALINGAS</div>
+                <div class="contenido">
+                    <div class="logo-seccion"><img src="logo_colegio.jpeg" class="logo-img"></div>
+                    <div class="info-estudiante">
+                        <div class="label-est">ESTUDIANTE:</div>
+                        <div class="apellido-val">${ape}</div>
+                        <div class="nombre-val">${nom}</div>
+                        <div class="datos-linea">DNI: <span>${a.dni}</span></div>
+                        <div class="datos-linea">AULA: <span>${a.grado}° "${a.seccion}"</span></div>
+                    </div>
+                    <div class="qr-box"><div class="qr-code" data-dni="${a.dni}"></div></div>
+                </div>
+                <div class="footer">DISCIPLINA • LEALTAD • HONRADEZ</div>
+            </div>
+        `;
+    });
+
+    ventana.document.write(`
+        <html>
+        <head>
+            <title>Impresión de Carnets</title>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap');
+                body { font-family: 'Roboto', sans-serif; background: #fff; padding: 0; margin: 0; }
+                
+                /* Contenedor de cuadrícula para impresión */
+                .contenedor-impresion {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr; /* 2 carnets por fila */
+                    gap: 20px;
+                    padding: 10px;
+                }
+
+                .carnet { 
+                    width: 8.6cm; height: 5.4cm; 
+                    background: white; border-radius: 12px; position: relative; overflow: hidden;
+                    border: 1px solid #eee; page-break-inside: avoid;
+                }
+
+                .cabecera { background: #15803D; color: white; padding: 8px; text-align: center; font-size: 10px; font-weight: 900; text-transform: uppercase; }
+                .contenido { display: flex; padding: 10px; align-items: center; justify-content: space-between; }
+                .logo-img { width: 45px; height: auto; }
+                .info-estudiante { flex: 1; padding: 0 10px; max-width: 160px; }
+                .label-est { font-size: 7px; color: #15803D; font-weight: bold; }
+                .apellido-val { font-size: 13px; color: #111; font-weight: 900; text-transform: uppercase; line-height: 1; }
+                .nombre-val { font-size: 10px; color: #444; font-weight: 700; text-transform: uppercase; margin-bottom: 5px; }
+                .datos-linea { font-size: 10px; font-weight: 900; color: #15803D; }
+                .datos-linea span { color: #333; }
+                .qr-box { width: 70px; height: 70px; border: 1px solid #eee; border-radius: 8px; display: flex; justify-content: center; align-items: center; }
+                .footer { position: absolute; bottom: 0; width: 100%; background: #f0fdf4; text-align: center; font-size: 8px; color: #15803D; font-weight: 900; padding: 4px 0; border-top: 1px solid #dcfce7; }
+
+                @media print {
+                    @page { size: A4; margin: 1cm; }
+                    .contenedor-impresion { gap: 15px; }
+                    .carnet { border: 1px solid #ccc !important; -webkit-print-color-adjust: exact; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="contenedor-impresion">
+                ${contenidoCarnets}
+            </div>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+            <script>
+                // Generar todos los QRs
+                document.querySelectorAll('.qr-code').forEach(div => {
+                    new QRCode(div, { 
+                        text: div.getAttribute('data-dni'), 
+                        width: 70, height: 70,
+                        correctLevel : QRCode.CorrectLevel.H
+                    });
+                });
+                setTimeout(() => { window.print(); window.close(); }, 1500);
+            </script>
+        </body>
+        </html>
+    `);
+    ventana.document.close();
+};
+
 // CRÍTICO: Esta función debe ser window. para que el HTML la detecte
 let alumnosTodosMemoria = [];
 let alumnosFiltradosMemoria = [];
@@ -760,15 +861,20 @@ window.verAlumnosGrado = (gradoSecSeleccionado) => {
     const vistaTabla = document.getElementById('vistaTablaAlumnos');
     const btnVolver = document.getElementById('btnVolverBloques');
     const titulo = document.getElementById('tituloLista');
+    // Referencia al botón de impresión masiva
+    const btnImprimirTodo = document.getElementById('btnImprimirTodoGrado');
     
     contenedor.classList.add('hidden');
     vistaTabla.classList.remove('hidden');
     btnVolver.classList.remove('hidden');
+
+    // MOSTRAR botón de impresión masiva al entrar a un grado
+    if (btnImprimirTodo) btnImprimirTodo.classList.remove('hidden');
+
     titulo.innerText = `ALUMNOS DE ${gradoSecSeleccionado}`;
 
-    // Escucha en tiempo real
     onSnapshot(collection(db, "alumnos"), (snapshot) => {
-        alumnosTodosMemoria = []; // Limpiamos el respaldo
+        alumnosTodosMemoria = []; 
         
         snapshot.forEach(docSnap => {
             const a = docSnap.data();
@@ -779,10 +885,7 @@ window.verAlumnosGrado = (gradoSecSeleccionado) => {
             }
         });
 
-        // Ordenamos el respaldo original
         alumnosTodosMemoria.sort((a, b) => a.nombres.localeCompare(b.nombres));
-
-        // Al cargar por primera vez, los filtrados son iguales a todos
         alumnosFiltradosMemoria = [...alumnosTodosMemoria]; 
         
         paginaActualAlumnos = 1; 
