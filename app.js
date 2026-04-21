@@ -4,6 +4,7 @@ import {
     deleteDoc, getDoc, getDocs, query, writeBatch 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+
 const firebaseConfig = {
     apiKey: "AIzaSyCqHy9ny-hi_92Rem_Y7QQlhGVCM_7yEcQ",
     authDomain: "asistencia-809aa.firebaseapp.com",
@@ -139,7 +140,9 @@ window.cerrarDia = async () => {
                     nombres: datosAlu.nombres,
                     hora: "--:--:--",
                     estado: "Faltó",
-                    fecha: hoy
+                    fecha: hoy,
+                    grado: datosAlu.grado || "?", 
+            seccion: datosAlu.seccion || "?"
                 }, { merge: true });
 
                 // 2. Envío de Notificación (Agregamos await para asegurar el envío)
@@ -160,49 +163,43 @@ window.cerrarDia = async () => {
 };
 
 // --- 3. ASISTENCIA EN TIEMPO REAL ---
-// --- 3. ASISTENCIA EN TIEMPO REAL AGRUPADA ---
 const iniciarControlAsistencia = (fechaManual = null) => {
     const hoy = fechaManual || new Date().toLocaleDateString('en-CA');
-    const contenedorAsis = document.getElementById('asistenciaHoy'); // Asegúrate que este sea un DIV contenedor, no un TBODY
-    if(!contenedorAsis) return;
+    const contenedorAsis = document.getElementById('asistenciaHoy');
+    if (!contenedorAsis) return;
 
-    onSnapshot(collection(db, "asistencia", hoy, "registros"), async (snapshot) => {
+    onSnapshot(collection(db, "asistencia", hoy, "registros"), (snapshot) => {
         contenedorAsis.innerHTML = "";
-        
+
         if (snapshot.empty) {
-            contenedorAsis.innerHTML = `<div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">No hay ingresos registrados para esta fecha (${hoy})...</div>`;
+            contenedorAsis.innerHTML = `<div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">
+                No hay ingresos registrados para esta fecha (${hoy})...
+            </div>`;
             return;
         }
 
-        // 1. Recopilar datos y obtener Grado/Sección de cada alumno
-        const registros = [];
-        for (const docSnap of snapshot.docs) {
+        // ✅ SIN peticiones extra — lee grado/sección del mismo documento
+        const registros = snapshot.docs.map(docSnap => {
             const d = docSnap.data();
-            const dni = docSnap.id;
-            
-            // Buscamos info del alumno para saber su grado/sección
-            const docAlu = await getDoc(doc(db, "alumnos", dni));
-            const aluData = docAlu.exists() ? docAlu.data() : { grado: '?', seccion: '?' };
-            
-            registros.push({
+            return {
                 ...d,
-                dni,
-                aula: `${aluData.grado}° "${aluData.seccion}"`.toUpperCase()
-            });
-        }
+                dni: docSnap.id,
+                aula: `${d.grado || '?'}° "${d.seccion || '?'}"`.toUpperCase()
+            };
+        });
 
-        // 2. Agrupar por Aula (Grado + Sección)
+        // Agrupar por Aula
         const grupos = registros.reduce((acc, curr) => {
             if (!acc[curr.aula]) acc[curr.aula] = [];
             acc[curr.aula].push(curr);
             return acc;
         }, {});
 
-        // 3. Renderizar Bloques por Sección
+        // Renderizar bloques por sección
         Object.keys(grupos).sort().forEach(aula => {
             const sectionDiv = document.createElement('div');
             sectionDiv.className = "mb-8 overflow-hidden rounded-xl border border-slate-200 shadow-sm";
-            
+
             sectionDiv.innerHTML = `
                 <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex justify-between items-center">
                     <h3 class="font-black text-green-800 text-sm">📍 SECCIÓN: ${aula}</h3>
@@ -213,10 +210,10 @@ const iniciarControlAsistencia = (fechaManual = null) => {
                 <table class="w-full text-left border-collapse">
                     <tbody class="bg-white">
                         ${grupos[aula].map(reg => {
-                            const color = reg.estado === "Puntual" ? "bg-green-100 text-green-700" : 
-                                          reg.estado === "Tardanza" ? "bg-yellow-100 text-yellow-700" : 
-                                          reg.estado.includes("Justificada") ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700";
-                            
+                            const color = reg.estado === "Puntual" ? "bg-green-100 text-green-700" :
+                                          reg.estado === "Tardanza" ? "bg-yellow-100 text-yellow-700" :
+                                          reg.estado?.includes("Justificada") ? "bg-blue-100 text-blue-700" : 
+                                          "bg-red-100 text-red-700";
                             return `
                                 <tr class="border-b last:border-0 hover:bg-slate-50 transition">
                                     <td class="p-3 font-bold text-green-700 w-20 text-sm">${reg.hora || '--:--'}</td>
@@ -226,21 +223,19 @@ const iniciarControlAsistencia = (fechaManual = null) => {
                                     </td>
                                     <td class="p-3 w-32">
                                         <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${color}">
-                                            ${reg.estado.toUpperCase()}
+                                            ${reg.estado?.toUpperCase()}
                                         </span>
                                     </td>
                                     <td class="p-3 text-right w-20">
-                                        <button onclick="window.justificarFalta('${reg.dni}', '${reg.nombres}')" 
+                                        <button onclick="window.justificarFalta('${reg.dni}', '${reg.nombres}')"
                                                 class="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-tighter">
                                             EDITAR
                                         </button>
                                     </td>
-                                </tr>
-                            `;
+                                </tr>`;
                         }).join('')}
                     </tbody>
-                </table>
-            `;
+                </table>`;
             contenedorAsis.appendChild(sectionDiv);
         });
     });
@@ -920,14 +915,12 @@ window.ajustarTextoDinámico = (elementoId) => {
 // --- FUNCIÓN DE BÚSQUEDA ---
 window.filtrarAlumnos = () => {
     const texto = document.getElementById('buscador').value.toLowerCase();
-    const filas = document.querySelectorAll('#tablaAlumnos tr');
-
-    filas.forEach(fila => {
-        // Obtenemos el texto de la fila (DNI y Nombre)
-        const contenido = fila.innerText.toLowerCase();
-        // Si el texto coincide, mostramos; si no, ocultamos
-        fila.style.display = contenido.includes(texto) ? "" : "none";
-    });
+    // alumnosFiltradosMemoria ya tiene todos los alumnos del grado
+    alumnosFiltradosMemoria = alumnosTodosMemoria.filter(a =>
+        a.nombres.toLowerCase().includes(texto) || a.dni.includes(texto)
+    );
+    paginaActualAlumnos = 1;
+    renderizarTablaConPaginacion();
 };
 
 
