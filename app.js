@@ -346,7 +346,6 @@ window.consultarDNI = async () => {
 
     btn.disabled = true;
     btn.innerHTML = "⏳";
-
     try {
         const token = "75881d0ad45fc822d207432641eb46af3a40a7aaadb9b7601346298f00939f8a"; 
 
@@ -749,23 +748,13 @@ window.cargarBloques = async () => {
 };
 
 window.imprimirTodosLosCarnets = () => {
-    if (alumnosFiltradosMemoria.length === 0) return alert("No hay alumnos cargados en este grado.");
+    if (alumnosFiltradosMemoria.length === 0) return alert("No hay alumnos.");
 
     const ventana = window.open('', '', 'height=800,width=1000');
-    
-    // Generamos el contenido de todos los carnets
     let contenidoCarnets = '';
     
     alumnosFiltradosMemoria.forEach(a => {
-        const palabras = (a.nombres || "").trim().split(' ');
-        let nom = "", ape = "";
-        if (palabras.length >= 3) {
-            nom = palabras.slice(2).join(' ');
-            ape = palabras.slice(0, 2).join(' ');
-        } else {
-            ape = palabras[0] || "";
-            nom = palabras.slice(1).join(' ') || "";
-        }
+        const nombreCompleto = (a.nombres || "SIN NOMBRE").toUpperCase();
 
         contenidoCarnets += `
             <div class="carnet">
@@ -774,10 +763,12 @@ window.imprimirTodosLosCarnets = () => {
                     <div class="logo-seccion"><img src="logo_colegio.jpeg" class="logo-img"></div>
                     <div class="info-estudiante">
                         <div class="label-est">ESTUDIANTE:</div>
-                        <div class="apellido-val">${ape}</div>
-                        <div class="nombre-val">${nom}</div>
-                        <div class="datos-linea">DNI: <span>${a.dni}</span></div>
-                        <div class="datos-linea">AULA: <span>${a.grado}° "${a.seccion}"</span></div>
+                        <div class="nombre-val">${nombreCompleto}</div>
+                        
+                        <div class="datos-contenedor">
+                            <div class="datos-linea">DNI: <span>${a.dni}</span></div>
+                            <div class="datos-linea">AULA: <span>${a.grado}° "${a.seccion}"</span></div>
+                        </div>
                     </div>
                     <div class="qr-box"><div class="qr-code" data-dni="${a.dni}"></div></div>
                 </div>
@@ -789,59 +780,65 @@ window.imprimirTodosLosCarnets = () => {
     ventana.document.write(`
         <html>
         <head>
-            <title>Impresión de Carnets</title>
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap');
-                body { font-family: 'Roboto', sans-serif; background: #fff; padding: 0; margin: 0; }
+                body { font-family: 'Roboto', sans-serif; margin: 0; padding: 10px; }
                 
-                /* Contenedor de cuadrícula para impresión */
                 .contenedor-impresion {
                     display: grid;
-                    grid-template-columns: 1fr 1fr; /* 2 carnets por fila */
-                    gap: 20px;
-                    padding: 10px;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 15px;
                 }
 
                 .carnet { 
                     width: 8.6cm; height: 5.4cm; 
-                    background: white; border-radius: 12px; position: relative; overflow: hidden;
-                    border: 1px solid #eee; page-break-inside: avoid;
+                    background: white; border-radius: 12px; position: relative; 
+                    overflow: hidden; border: 1.2px solid #000; page-break-inside: avoid;
                 }
 
-                .cabecera { background: #15803D; color: white; padding: 8px; text-align: center; font-size: 10px; font-weight: 900; text-transform: uppercase; }
-                .contenido { display: flex; padding: 10px; align-items: center; justify-content: space-between; }
-                .logo-img { width: 45px; height: auto; }
-                .info-estudiante { flex: 1; padding: 0 10px; max-width: 160px; }
-                .label-est { font-size: 7px; color: #15803D; font-weight: bold; }
-                .apellido-val { font-size: 13px; color: #111; font-weight: 900; text-transform: uppercase; line-height: 1; }
-                .nombre-val { font-size: 10px; color: #444; font-weight: 700; text-transform: uppercase; margin-bottom: 5px; }
-                .datos-linea { font-size: 10px; font-weight: 900; color: #15803D; }
-                .datos-linea span { color: #333; }
-                .qr-box { width: 70px; height: 70px; border: 1px solid #eee; border-radius: 8px; display: flex; justify-content: center; align-items: center; }
-                .footer { position: absolute; bottom: 0; width: 100%; background: #f0fdf4; text-align: center; font-size: 8px; color: #15803D; font-weight: 900; padding: 4px 0; border-top: 1px solid #dcfce7; }
+                .cabecera { 
+                    background: #15803D; color: white; padding: 6px; text-align: center; 
+                    font-size: 11px; font-weight: 900; 
+                }
+
+                .contenido { display: flex; padding: 10px 15px; align-items: center; height: 3.6cm; }
+                .logo-img { width: 55px; height: auto; }
+
+                .info-estudiante { flex: 1; padding: 0 12px; display: flex; flex-direction: column; justify-content: center; }
+                
+                .label-est { font-size: 9px; color: #15803D; font-weight: 900; margin-bottom: 2px; }
+
+                /* MEJORA: Letras mucho más grandes y legibles */
+                .nombre-val { 
+                    font-size: 16px; /* Aumentado de 13px */
+                    color: #000; 
+                    font-weight: 900; 
+                    line-height: 1.1; 
+                    margin-bottom: 10px;
+                    word-wrap: break-word;
+                }
+
+                .datos-contenedor { border-top: 1px solid #eee; pt: 5px; }
+                .datos-linea { font-size: 13px; font-weight: 900; color: #15803D; margin-top: 3px; }
+                .datos-linea span { color: #000; }
+
+                .qr-box { width: 75px; height: 75px; display: flex; justify-content: center; align-items: center; }
+                .footer { position: absolute; bottom: 0; width: 100%; background: #f0fdf4; text-align: center; font-size: 10px; color: #15803D; font-weight: 900; padding: 5px 0; border-top: 1.5px solid #15803D; }
 
                 @media print {
-                    @page { size: A4; margin: 1cm; }
-                    .contenedor-impresion { gap: 15px; }
-                    .carnet { border: 1px solid #ccc !important; -webkit-print-color-adjust: exact; }
+                    @page { size: A4; margin: 0.5cm; }
+                    .carnet { -webkit-print-color-adjust: exact; }
                 }
             </style>
         </head>
         <body>
-            <div class="contenedor-impresion">
-                ${contenidoCarnets}
-            </div>
+            <div class="contenedor-impresion">${contenidoCarnets}</div>
             <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
             <script>
-                // Generar todos los QRs
                 document.querySelectorAll('.qr-code').forEach(div => {
-                    new QRCode(div, { 
-                        text: div.getAttribute('data-dni'), 
-                        width: 70, height: 70,
-                        correctLevel : QRCode.CorrectLevel.H
-                    });
+                    new QRCode(div, { text: div.getAttribute('data-dni'), width: 75, height: 75, correctLevel: QRCode.CorrectLevel.H });
                 });
-                setTimeout(() => { window.print(); window.close(); }, 1500);
+                setTimeout(() => { window.print(); window.close(); }, 1000);
             </script>
         </body>
         </html>
