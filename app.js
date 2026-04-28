@@ -4,6 +4,11 @@ import {
     deleteDoc, getDoc, getDocs, query, writeBatch 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+const ULTRAMSG_CONFIG = {
+    instanceId: "instance169160",
+    token: "bkd2pujvtq9icz2w",
+    baseUrl: "https://api.ultramsg.com/instance169160/messages/chat"
+};
 
 const firebaseConfig = {
     apiKey: "AIzaSyCqHy9ny-hi_92Rem_Y7QQlhGVCM_7yEcQ",
@@ -214,25 +219,37 @@ const iniciarControlAsistencia = (fechaManual = null) => {
                                           reg.estado === "Tardanza" ? "bg-yellow-100 text-yellow-700" :
                                           reg.estado?.includes("Justificada") ? "bg-blue-100 text-blue-700" : 
                                           "bg-red-100 text-red-700";
-                            return `
-                                <tr class="border-b last:border-0 hover:bg-slate-50 transition">
-                                    <td class="p-3 font-bold text-green-700 w-20 text-sm">${reg.hora || '--:--'}</td>
-                                    <td class="p-3">
-                                        <div class="font-bold text-slate-700 text-sm">${reg.nombres}</div>
-                                        <div class="text-[9px] text-slate-400 font-bold uppercase">DNI: ${reg.dni}</div>
-                                    </td>
-                                    <td class="p-3 w-32">
-                                        <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${color}">
-                                            ${reg.estado?.toUpperCase()}
-                                        </span>
-                                    </td>
-                                    <td class="p-3 text-right w-20">
-                                        <button onclick="window.justificarFalta('${reg.dni}', '${reg.nombres}')"
-                                                class="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-tighter">
-                                            EDITAR
-                                        </button>
-                                    </td>
-                                </tr>`;
+                          // Dentro de tu .map() en iniciarControlAsistencia
+return `
+    <tr class="border-b last:border-0 hover:bg-slate-50 transition">
+        <td class="p-3 font-bold text-green-700 w-20 text-sm">${reg.hora || '--:--'}</td>
+        
+        <td class="p-3">
+            <div class="font-bold text-slate-700 text-sm">${reg.nombres}</div>
+            <div class="text-[9px] text-slate-400 font-bold uppercase">DNI: ${reg.dni}</div>
+        </td>
+        
+        <td class="p-3 flex-grow">
+            <div class="flex flex-col gap-1 items-start">
+                <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${color}">
+                    ${reg.estado?.toUpperCase()}
+                </span>
+                
+                ${reg.conductaAlerta ? `
+                    <span class="bg-red-500 text-white px-2 py-0.5 rounded text-[8px] font-bold shadow-sm">
+                        ${reg.conductaAlerta}
+                    </span>
+                ` : ''}
+            </div>
+        </td>
+        
+        <td class="p-3 text-right w-24">
+            <button onclick="window.justificarFalta('${reg.dni}', '${reg.nombres}')"
+                    class="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-tighter hover:underline">
+                EDITAR
+            </button>
+        </td>
+    </tr>`;
                         }).join('')}
                     </tbody>
                 </table>`;
@@ -513,9 +530,6 @@ window.generarReportePDF = async () => {
     
     if(snap.empty) return alert("No hay datos para exportar hoy.");
 
-    console.log("Generando PDF segmentado por aulas...");
-
-    // 1. Agrupar datos por Grado/Sección primero
     const datosPorGrado = {};
     for (const d of snap.docs) {
         const dataAsis = d.data();
@@ -528,24 +542,27 @@ window.generarReportePDF = async () => {
         }
 
         if (!datosPorGrado[gradoSec]) datosPorGrado[gradoSec] = [];
+        
+        // Limpiamos el texto para quitar el emoji si existiera en la BD
+        const conductaTexto = (dataAsis.conductaAlerta || "").replace("⚠️ ", "");
+
         datosPorGrado[gradoSec].push([
             dataAsis.hora || '--:--', 
             d.id, 
             dataAsis.nombres.toUpperCase(), 
             gradoSec, 
-            dataAsis.estado.toUpperCase()
+            dataAsis.estado.toUpperCase(),
+            conductaTexto.toUpperCase()
         ]);
     }
 
-    // 2. Generar hojas en el PDF
     const grados = Object.keys(datosPorGrado).sort();
     
     grados.forEach((grado, index) => {
-        // Si no es la primera hoja, añadimos una nueva página
         if (index > 0) docPDF.addPage();
 
-        // Encabezado Institucional
-        docPDF.setTextColor(21, 128, 61); // Verde Malingas
+        // Encabezado idéntico al anterior
+        docPDF.setTextColor(21, 128, 61); 
         docPDF.setFontSize(16);
         docPDF.setFont("helvetica", "bold");
         docPDF.text("I.E. HORACIO ZEBALLOS GÁMEZ", 14, 20);
@@ -555,40 +572,27 @@ window.generarReportePDF = async () => {
         docPDF.text(`MALINGAS - TAMBOGRANDE | REPORTE DE ASISTENCIA`, 14, 25);
         
         docPDF.setDrawColor(21, 128, 61);
-        docPDF.line(14, 27, 196, 27); // Línea decorativa verde
+        docPDF.line(14, 27, 196, 27);
 
         docPDF.setTextColor(0);
         docPDF.setFontSize(12);
         docPDF.text(`FECHA: ${hoyId}`, 14, 35);
         docPDF.text(`GRADO Y SECCIÓN: ${grado}`, 14, 42);
 
-        // Tabla de alumnos para este grado específico
         docPDF.autoTable({ 
             startY: 48, 
-            head: [['HORA', 'DNI', 'ESTUDIANTE', 'G/S', 'ESTADO']], 
+            head: [['HORA', 'DNI', 'ESTUDIANTE', 'G/S', 'ESTADO', 'OBS. CONDUCTA']], 
             body: datosPorGrado[grado], 
-            headStyles: { 
-                fillColor: [21, 128, 61], // Fondo Verde
-                textColor: [255, 255, 255], // Texto Blanco
-                fontStyle: 'bold'
+            headStyles: { fillColor: [21, 128, 61], textColor: [255, 255, 255], fontStyle: 'bold' },
+            styles: { fontSize: 8, cellPadding: 3 },
+            columnStyles: {
+                5: { cellWidth: 45, textColor: [180, 0, 0], fontStyle: 'bold' } // Rojo para la observación
             },
-            styles: { 
-                fontSize: 9,
-                cellPadding: 3
-            },
-            alternateRowStyles: {
-                fillColor: [240, 253, 244] // Verde muy claro para filas alternas
-            }
+            alternateRowStyles: { fillColor: [240, 253, 244] }
         });
-
-        // Pie de página con número de página
-        const pageCount = docPDF.internal.getNumberOfPages();
-        docPDF.setFontSize(8);
-        docPDF.setTextColor(150);
-        docPDF.text(`Página ${pageCount}`, 196, 285, { align: 'right' });
     });
 
-    docPDF.save(`Reporte_Asistencia_HZG_${hoyId}.pdf`);
+    docPDF.save(`Reporte_HZG_${hoyId}.pdf`);
 };
 
 // --- 5. EXPORTACIÓN EXCEL ---
@@ -600,7 +604,6 @@ window.generarReporteExcel = async () => {
 
     const datosPorGrado = {};
 
-    // 1. Agrupación de datos por Grado/Sección
     for (const d of snap.docs) {
         const data = d.data();
         let gradoSec = "N/A";
@@ -610,71 +613,70 @@ window.generarReporteExcel = async () => {
             gradoSec = `${alu.grado}${alu.seccion}`.toUpperCase();
         }
         if (!datosPorGrado[gradoSec]) datosPorGrado[gradoSec] = [];
+        
+        // Quitamos el símbolo de advertencia del texto
+        const conductaLimpia = (data.conductaAlerta || "").replace("⚠️ ", "");
+
         datosPorGrado[gradoSec].push({
             "HORA": data.hora || '--:--',
             "DNI": d.id,
             "ESTUDIANTE": data.nombres.toUpperCase(),
             "GRADO/SEC": gradoSec,
-            "ESTADO": data.estado.toUpperCase()
+            "ESTADO": data.estado.toUpperCase(),
+            "OBSERVACIÓN CONDUCTA": conductaLimpia.toUpperCase()
         });
     }
 
-    // 2. Crear el Libro de Trabajo (Workbook)
     const wb = XLSX.utils.book_new();
 
-    // 3. Crear una hoja por cada grupo
     Object.keys(datosPorGrado).sort().forEach(grado => {
-        // 1. Convertimos los datos a hoja de cálculo
         const ws = XLSX.utils.json_to_sheet(datosPorGrado[grado]);
-
-        // 2. --- AQUÍ VA EL DISEÑO ---
-        // Definimos el rango de la hoja (ej: A1:E10)
+        
+        // Estilos de encabezado verde (Mantiene tu diseño original)
         const range = XLSX.utils.decode_range(ws['!ref']);
-
-        // Recorremos las celdas de la primera fila (encabezados) para darles estilo
         for (let C = range.s.c; C <= range.e.c; ++C) {
-            const address = XLSX.utils.encode_cell({ r: 0, c: C }); // Fila 0, Columna C
+            const address = XLSX.utils.encode_cell({ r: 0, c: C });
             if (!ws[address]) continue;
-
-            // IMPORTANTE: Para que estos estilos funcionen en .xlsx libre, 
-            // a veces es necesario usar una extensión de la librería o forzar el formato XML.
             ws[address].s = {
-                fill: { fgColor: { rgb: "15803D" } }, // Verde institucional
-                font: { color: { rgb: "FFFFFF" }, bold: true }, // Blanco Negrita
+                fill: { fgColor: { rgb: "15803D" } },
+                font: { color: { rgb: "FFFFFF" }, bold: true },
                 alignment: { horizontal: "center" }
             };
         }
 
-        // Ajuste de anchos de columna (esto sí funciona siempre)
         ws['!cols'] = [
-            { wch: 12 }, { wch: 15 }, { wch: 45 }, { wch: 12 }, { wch: 15 }
+            { wch: 10 }, { wch: 12 }, { wch: 45 }, { wch: 10 }, { wch: 15 }, { wch: 35 }
         ];
 
         XLSX.utils.book_append_sheet(wb, ws, `GRADO ${grado}`);
     });
 
-    // 4. Exportar como archivo .xlsx (Formato moderno, no dañado)
     XLSX.writeFile(wb, `Reporte_Asistencia_HZG_${hoyId}.xlsx`);
 };
 
-const enviarNotificacionUltraMsg = async (telefono, nombre, estado) => {
+// REEMPLAZO EXACTO: Borra la de UltraMsg y pega esta
+const enviarNotificacionUltraMsg = async (telefono, nombre, estado, mensajePersonalizado = null) => {
+    // NUEVA URL: Ahora apunta directamente a la nube de UltraMsg
     const url = "https://api.ultramsg.com/instance169160/messages/chat";
-    const token = "bkd2pujvtq9icz2w";
-    const mensaje = `*I.E. Horacio Zeballos Zeballos*\n\nHola, se informa que el estudiante *${nombre}* registró su ingreso como: *${estado.toUpperCase()}*.\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
-
-    const params = new URLSearchParams();
-    params.append('token', token);
-    params.append('to', `+51${telefono}`); // Asegúrate de que el teléfono tenga 9 dígitos
-    params.append('body', mensaje);
+    const token = "bkd2pujvtq9icz2w"; // Tu token de la captura
+    
+    const mensaje = mensajePersonalizado || `*I.E. HORACIO ZEBALLOS GÁMEZ*\n\nHola, se informa que el estudiante *${nombre.toUpperCase()}* registró su ingreso como: *${estado.toUpperCase()}*.\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
 
     try {
         await fetch(url, {
             method: 'POST',
-            body: params
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                token: token,
+                to: `51${telefono}`, // UltraMsg usa el parámetro "to"
+                body: mensaje        // UltraMsg usa el parámetro "body"
+            })
         });
-        console.log("Notificación enviada a:", nombre);
+        console.log("✅ Notificación enviada vía UltraMsg a:", nombre);
     } catch (error) {
-        console.error("Error al enviar UltraMsg:", error);
+        console.error("❌ Error al conectar con UltraMsg:", error);
     }
 };
 
@@ -746,7 +748,6 @@ window.cargarBloques = async () => {
         contenedorPrincipal.innerHTML = `<p class='text-red-500'>Error: ${e.message}</p>`;
     }
 };
-
 window.imprimirTodosLosCarnets = () => {
     if (alumnosFiltradosMemoria.length === 0) return alert("No hay alumnos.");
 
@@ -782,52 +783,99 @@ window.imprimirTodosLosCarnets = () => {
         <head>
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap');
-                body { font-family: 'Roboto', sans-serif; margin: 0; padding: 10px; }
+                
+                /* Configuración de página para 10 carnets (2x5) */
+                @page { 
+                    size: A4; 
+                    margin: 0.8cm 0.5cm; 
+                }
+
+                body { 
+                    font-family: 'Roboto', sans-serif; 
+                    margin: 0; 
+                    padding: 0; 
+                    background: white;
+                }
                 
                 .contenedor-impresion {
                     display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 15px;
+                    grid-template-columns: 1fr 1fr; /* 2 columnas */
+                    grid-template-rows: repeat(5, 5.4cm); /* 5 filas de tamaño exacto */
+                    column-gap: 10px;
+                    row-gap: 5px;
+                    justify-items: center;
                 }
 
                 .carnet { 
-                    width: 8.6cm; height: 5.4cm; 
-                    background: white; border-radius: 12px; position: relative; 
-                    overflow: hidden; border: 1.2px solid #000; page-break-inside: avoid;
+                    width: 8.6cm; 
+                    height: 5.3cm; /* Ajuste mínimo para que entren los 5 */
+                    background: white; 
+                    border-radius: 10px; 
+                    position: relative; 
+                    overflow: hidden; 
+                    border: 1px solid #333; 
+                    page-break-inside: avoid;
                 }
 
                 .cabecera { 
-                    background: #15803D; color: white; padding: 6px; text-align: center; 
-                    font-size: 11px; font-weight: 900; 
+                    background: #15803D; 
+                    color: white; 
+                    padding: 5px; 
+                    text-align: center; 
+                    font-size: 10px; 
+                    font-weight: 900; 
                 }
 
-                .contenido { display: flex; padding: 10px 15px; align-items: center; height: 3.6cm; }
-                .logo-img { width: 55px; height: auto; }
-
-                .info-estudiante { flex: 1; padding: 0 12px; display: flex; flex-direction: column; justify-content: center; }
+                .contenido { 
+                    display: flex; 
+                    padding: 8px 12px; 
+                    align-items: center; 
+                    height: 3.5cm; 
+                }
                 
-                .label-est { font-size: 9px; color: #15803D; font-weight: 900; margin-bottom: 2px; }
+                .logo-img { width: 50px; height: auto; }
 
-                /* MEJORA: Letras mucho más grandes y legibles */
+                .info-estudiante { 
+                    flex: 1; 
+                    padding: 0 10px; 
+                    display: flex; 
+                    flex-direction: column; 
+                    justify-content: center; 
+                }
+                
+                .label-est { font-size: 8px; color: #15803D; font-weight: 900; margin-bottom: 1px; }
+
                 .nombre-val { 
-                    font-size: 16px; /* Aumentado de 13px */
+                    font-size: 14px; 
                     color: #000; 
                     font-weight: 900; 
                     line-height: 1.1; 
-                    margin-bottom: 10px;
+                    margin-bottom: 6px;
                     word-wrap: break-word;
                 }
 
-                .datos-contenedor { border-top: 1px solid #eee; pt: 5px; }
-                .datos-linea { font-size: 13px; font-weight: 900; color: #15803D; margin-top: 3px; }
+                .datos-contenedor { border-top: 1px solid #eee; padding-top: 4px; }
+                .datos-linea { font-size: 11px; font-weight: 900; color: #15803D; margin-top: 2px; }
                 .datos-linea span { color: #000; }
 
-                .qr-box { width: 75px; height: 75px; display: flex; justify-content: center; align-items: center; }
-                .footer { position: absolute; bottom: 0; width: 100%; background: #f0fdf4; text-align: center; font-size: 10px; color: #15803D; font-weight: 900; padding: 5px 0; border-top: 1.5px solid #15803D; }
+                .qr-box { width: 70px; height: 70px; display: flex; justify-content: center; align-items: center; }
+                
+                .footer { 
+                    position: absolute; 
+                    bottom: 0; 
+                    width: 100%; 
+                    background: #f0fdf4; 
+                    text-align: center; 
+                    font-size: 9px; 
+                    color: #15803D; 
+                    font-weight: 900; 
+                    padding: 4px 0; 
+                    border-top: 1px solid #15803D; 
+                }
 
                 @media print {
-                    @page { size: A4; margin: 0.5cm; }
-                    .carnet { -webkit-print-color-adjust: exact; }
+                    body { background: none; }
+                    .carnet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                 }
             </style>
         </head>
@@ -836,9 +884,17 @@ window.imprimirTodosLosCarnets = () => {
             <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
             <script>
                 document.querySelectorAll('.qr-code').forEach(div => {
-                    new QRCode(div, { text: div.getAttribute('data-dni'), width: 75, height: 75, correctLevel: QRCode.CorrectLevel.H });
+                    new QRCode(div, { 
+                        text: div.getAttribute('data-dni'), 
+                        width: 70, 
+                        height: 70, 
+                        correctLevel: QRCode.CorrectLevel.H 
+                    });
                 });
-                setTimeout(() => { window.print(); window.close(); }, 1000);
+                setTimeout(() => { 
+                    window.print(); 
+                    window.close(); 
+                }, 1200);
             </script>
         </body>
         </html>
@@ -985,74 +1041,85 @@ window.editarAlumno = (dni, nombres, grado, seccion, telefono) => {
 
 window.eliminarAlumno = async (id) => { if(confirm("¿Eliminar?")) await deleteDoc(doc(db, "alumnos", id)); };
 
+// --- 3. JUSTIFICAR Y CONDUCTA (Sincronizado con el modelo de la App) ---
 window.justificarFalta = async (dni, nombre) => {
-    // 1. Definimos las opciones del prompt
-    const n = prompt(`Cambiar estado para ${nombre.toUpperCase()}:\n1. Puntual\n2. Tardanza\n3. Salida por Salud\n4. Tardanza Justificada\n5. Falta Justificada\n6. Falta`, "5");
+    const n = prompt(`Cambiar estado para ${nombre.toUpperCase()}:\n1. Puntual\n2. Tardanza\n3. Salida por Salud\n4. Tardanza Justificada\n5. Falta Justificada\n6. Falta\n7. REPORTAR CONDUCTA INADECUADA`, "1");
     
-    // Obtenemos la hora actual para el registro de salida
     const ahora = new Date();
-    const horaSalida = ahora.toLocaleTimeString('en-GB'); // Formato HH:MM:SS
+    // Formato de hora HH:mm:ss
+    const horaActual = ahora.toLocaleTimeString('es-PE', { hour12: false });
+    const hoy = document.getElementById('fechaConsulta')?.value || ahora.toLocaleDateString('en-CA');
 
-    // 2. Mapeo de estados (Aseguramos que el índice coincida con el número ingresado)
-    const estados = [
-        "", 
-        "Puntual", 
-        "Tardanza", 
-        `Salida por Salud (${horaSalida})`, // Inyectamos la hora aquí
-        "Tardanza Justificada", 
-        "Falta Justificada", 
-        "Falta"
-    ];
-    
+    if (n === "7") {
+        try {
+            const idConducta = Date.now().toString();
+            // Guardar en historial
+            await setDoc(doc(db, "alumnos", dni, "conducta", idConducta), {
+                fecha: hoy, 
+                hora: horaActual, 
+                incidencia: "Conducta Inadecuada", 
+                nombres: nombre.toUpperCase()
+            });
+
+            // Reflejar en la lista de asistencia
+            await setDoc(doc(db, "asistencia", hoy, "registros", dni), { 
+                conductaAlerta: `CONDUCTA INADECUADA (${horaActual})` 
+            }, { merge: true });
+
+            const docAlu = await getDoc(doc(db, "alumnos", dni));
+            if (docAlu.exists() && docAlu.data().telefono) {
+                // MODELO DE MENSAJE PARA CONDUCTA (Igual al de la imagen)
+                const msj = `*REPORTE DE CONDUCTA - I.E. HZG*\n\n` +
+                            `Estimado apoderado, se le informa que el estudiante:\n` +
+                            `*${nombre.toUpperCase()}*\n\n` +
+                            `Ha presentado una *CONDUCTA INADECUADA* dentro de la institución.\n` +
+                            `Hora del reporte: ${horaActual}\n\n` +
+                            `Se solicita su presencia o comunicación con el auxiliar de turno.\n\n` +
+                            `_Disciplina, Lealtad, Honradez._`;
+                
+                await window.enviarNotificacionUltraMsg(docAlu.data().telefono, msj);
+            }
+            alert("✅ Reporte de conducta enviado al WhatsApp.");
+            return; 
+        } catch (e) { alert("Error al reportar conducta"); return; }
+    }
+
+    const estados = ["", "Puntual", "Tardanza", `Salida por Salud (${horaActual})`, "Tardanza Justificada", "Falta Justificada", "Falta"];
     const nuevoEstado = estados[n];
-
     if (!nuevoEstado) return;
-    
-    // Obtenemos la fecha del input de consulta o la fecha de hoy
-    const hoy = document.getElementById('fechaConsulta')?.value || new Date().toLocaleDateString('en-CA');
 
     try {
-        // 3. Actualizar en Firebase
-        await setDoc(doc(db, "asistencia", hoy, "registros", dni), { 
-            estado: nuevoEstado 
-        }, { merge: true });
-
-        // 4. Recuperar teléfono y enviar notificación
+        await setDoc(doc(db, "asistencia", hoy, "registros", dni), { estado: nuevoEstado }, { merge: true });
+        
         const docAlu = await getDoc(doc(db, "alumnos", dni));
         if (docAlu.exists() && docAlu.data().telefono) {
-            const tel = docAlu.data().telefono;
-            const msj = `*ACTUALIZACIÓN INSTITUCIONAL*\n\nSe informa que la situación de *${nombre.toUpperCase()}* ha sido actualizada a: *${nuevoEstado.toUpperCase()}*.\n\n_I.E. Horacio Zeballos Gámez_`;
+            // MODELO DE MENSAJE PARA ACTUALIZACIÓN DE ASISTENCIA
+            const msj = `*CONTROL DE ASISTENCIA HZG*\n\n` +
+                        `Estudiante: *${nombre.toUpperCase()}*\n` +
+                        `Estado Actualizado: *${nuevoEstado.toUpperCase()}*\n` +
+                        `Hora del cambio: ${horaActual}\n\n` +
+                        `_Malingas: Disciplina, Lealtad, Honradez._`;
             
-            await window.enviarNotificacionUltraMsg(tel, nombre, nuevoEstado, msj);
-            alert(`✅ Estado actualizado: ${nuevoEstado}\nPadre notificado con éxito.`);
-            
-            // Refrescar la vista si la función existe
-            if(typeof window.actualizarVistaAsistencia === 'function') window.actualizarVistaAsistencia();
+            await window.enviarNotificacionUltraMsg(docAlu.data().telefono, msj);
         }
-    } catch (e) { 
-        console.error(e);
-        alert("❌ Error al actualizar en la base de datos."); 
-    }
+        alert("✅ Estado actualizado y notificado.");
+    } catch (e) { console.error(e); }
 };
 
-window.enviarNotificacionUltraMsg = async (telefono, nombre, estado, mensajePersonalizado = null) => {
-    const url = "https://api.ultramsg.com/instance169160/messages/chat";
-    const token = "bkd2pujvtq9icz2w";
-    
-    // Si no hay mensaje personalizado, usa el estándar
-    const mensaje = mensajePersonalizado || `*INGRESO*\n\nSe informa que el estudiante *${nombre}* registró su ingreso como: *${estado.toUpperCase()}*.`;
-
-    const params = new URLSearchParams();
-    params.append('token', token);
-    params.append('to', `+51${telefono}`);
-    params.append('body', mensaje);
-    params.append('priority', '10');
-
+// NUEVA FUNCIÓN PARA TU BOT PROPIO (Node.js)
+window.enviarNotificacionUltraMsg = async (telefono, mensaje) => {
     try {
-        await fetch(url, { method: 'POST', body: params });
-    } catch (e) {
-        console.error("Error UltraMsg:", e);
-    }
+        await fetch(ULTRAMSG_CONFIG.baseUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                token: ULTRAMSG_CONFIG.token,
+                to: `51${telefono}`,
+                body: mensaje
+            })
+        });
+        console.log("✅ UltraMsg enviado");
+    } catch (e) { console.error("❌ Error UltraMsg", e); }
 };
 // --- NUEVA FUNCIÓN: Ajuste Dinámico de Texto ---
 window.ajustarTextoDinámico = (elementoId) => {
