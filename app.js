@@ -30,7 +30,8 @@ if(registroForm) {
         const dni = document.getElementById('dni').value;
         const datos = {
             dni: dni,
-            nombres: document.getElementById('nombres').value,
+            nombres: document.getElementById('nombres').value.toUpperCase(),
+            apoderado: document.getElementById('apoderado').value.toUpperCase(), // 👈 Nueva línea
             grado: document.getElementById('grado').value,
             seccion: document.getElementById('seccion').value,
             telefono: document.getElementById('telefono').value
@@ -120,50 +121,62 @@ window.generarSoloQR = async (dni) => {
 
 window.cerrarDia = async () => {
     const hoy = new Date().toLocaleDateString('en-CA');
-    if (!confirm("¿Finalizar día y enviar notificaciones de FALTA a los padres?")) return;
+    if (!confirm("¿Finalizar día y marcar como PUNTUAL (07:45 AM) a los alumnos restantes?")) return;
 
     try {
-        const batch = writeBatch(db); // Ahora sí funcionará con la importación correcta
+        const batch = writeBatch(db); 
         const snapAlumnos = await getDocs(collection(db, "alumnos"));
         const snapAsistencia = await getDocs(collection(db, "asistencia", hoy, "registros"));
         
         const asistieronDni = new Set();
         snapAsistencia.forEach(docSnap => asistieronDni.add(docSnap.id));
 
-        let contFaltas = 0;
+        let contRegistrados = 0;
 
         for (const docAlumno of snapAlumnos.docs) {
             const dni = docAlumno.id;
             const datosAlu = docAlumno.data();
 
             if (!asistieronDni.has(dni)) {
-                contFaltas++;
+                contRegistrados++;
                 
-                // 1. Registro en Firebase
-                const refFalta = doc(db, "asistencia", hoy, "registros", dni);
-                batch.set(refFalta, {
+                const refAsistencia = doc(db, "asistencia", hoy, "registros", dni);
+                const horaFija = "07:45:00";
+                
+                // 1. Registro automático en Firebase
+                batch.set(refAsistencia, {
                     nombres: datosAlu.nombres,
-                    hora: "--:--:--",
-                    estado: "Faltó",
+                    apoderado: datosAlu.apoderado || "",
+                    hora: horaFija,
+                    estado: "Puntual",
                     fecha: hoy,
                     grado: datosAlu.grado || "?", 
-            seccion: datosAlu.seccion || "?"
+                    seccion: datosAlu.seccion || "?"
                 }, { merge: true });
 
-                // 2. Envío de Notificación (Agregamos await para asegurar el envío)
+                // 2. Notificación con el formato exacto solicitado
                 if (datosAlu.telefono) {
-                    const mensajeFalta = `*INASISTENCIA*\n\nEstimado apoderado, se le informa que el estudiante *${datosAlu.nombres.toUpperCase()}* no ha registrado su asistencia el día de hoy (${hoy}).\n\n_I.E. Horacio Zeballos Gámez_`;
-                    await window.enviarNotificacionUltraMsg(datosAlu.telefono, datosAlu.nombres, "Faltó", mensajeFalta);
+                    const nombreApoderado = datosAlu.apoderado ? datosAlu.apoderado.toUpperCase() : "APODERADO";
+                    const estudiante = datosAlu.nombres.toUpperCase();
+                    
+                    const mensajeAuto = `*CONTROL DE ASISTENCIA HZG*\n\n` +
+                                      `Estimado(a) *${nombreApoderado}*, se le informa que el estudiante:\n` +
+                                      `Estudiante: *${estudiante}*\n` +
+                                      `Estado: *PUNTUAL*\n` +
+                                      `Hora de Ingreso: ${horaFija}\n\n` +
+                                      `_Malingas: Disciplina, Lealtad, Honradez._`;
+                    
+                    await window.enviarNotificacionUltraMsg(datosAlu.telefono, estudiante, "Puntual", mensajeAuto);
                 }
             }
         }
 
         await batch.commit(); 
-        alert(`Éxito: Se registraron ${contFaltas} faltas.`);
+        alert(`Éxito: Se regularizaron ${contRegistrados} alumnos como Puntual.`);
         
     } catch (error) {
         console.error("Error en cerrarDia:", error);
-        alert("Error: " + error.message);
+        alert("Error al finalizar el día: " + error.message);
     }
 };
 
@@ -219,7 +232,6 @@ const iniciarControlAsistencia = (fechaManual = null) => {
                                           reg.estado === "Tardanza" ? "bg-yellow-100 text-yellow-700" :
                                           reg.estado?.includes("Justificada") ? "bg-blue-100 text-blue-700" : 
                                           "bg-red-100 text-red-700";
-                          // Dentro de tu .map() en iniciarControlAsistencia
 return `
     <tr class="border-b last:border-0 hover:bg-slate-50 transition">
         <td class="p-3 font-bold text-green-700 w-20 text-sm">${reg.hora || '--:--'}</td>
@@ -227,19 +239,40 @@ return `
         <td class="p-3">
             <div class="font-bold text-slate-700 text-sm">${reg.nombres}</div>
             <div class="text-[9px] text-slate-400 font-bold uppercase">DNI: ${reg.dni}</div>
+            ${reg.apoderado ? `<div class="text-[9px] text-blue-600 font-bold uppercase">APODODDERADO: ${reg.apoderado}</div>` : ''} 
         </td>
         
         <td class="p-3 flex-grow">
             <div class="flex flex-col gap-1 items-start">
                 <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${color}">
-                    ${reg.estado?.toUpperCase()}
+                    ${reg.estado?.toUpperCase() || 'FALTÓ'}
                 </span>
                 
-                ${reg.conductaAlerta ? `
-                    <span class="bg-red-500 text-white px-2 py-0.5 rounded text-[8px] font-bold shadow-sm">
-                        ${reg.conductaAlerta}
-                    </span>
-                ` : ''}
+                <div class="flex flex-wrap gap-1 mt-1">
+                    ${reg.alertaSalud ? `
+                        <span class="bg-blue-600 text-white px-2 py-0.5 rounded text-[8px] font-bold shadow-sm uppercase">
+                            🚑 ${reg.alertaSalud}
+                        </span>
+                    ` : ''}
+
+                    ${reg.alertaConducta ? `
+                        <span class="bg-red-500 text-white px-2 py-0.5 rounded text-[8px] font-bold shadow-sm uppercase">
+                            ⚠️ ${reg.alertaConducta}
+                        </span>
+                    ` : ''}
+
+                    ${reg.alertaCorte ? `
+                        <span class="bg-orange-500 text-white px-2 py-0.5 rounded text-[8px] font-bold shadow-sm uppercase">
+                            ✂️ ${reg.alertaCorte}
+                        </span>
+                    ` : ''}
+
+                    ${reg.alertaVestimenta ? `
+                        <span class="bg-purple-500 text-white px-2 py-0.5 rounded text-[8px] font-bold shadow-sm uppercase">
+                            👔 ${reg.alertaVestimenta}
+                        </span>
+                    ` : ''}
+                </div>
             </div>
         </td>
         
@@ -526,42 +559,63 @@ window.generarReportePDF = async () => {
     const { jsPDF } = window.jspdf;
     const docPDF = new jsPDF();
     const hoyId = new Date().toLocaleDateString('en-CA');
-    const snap = await getDocs(collection(db, "asistencia", hoyId, "registros"));
     
-    if(snap.empty) return alert("No hay datos para exportar hoy.");
+    // 1. CARGA MASIVA: Traemos asistencia y alumnos en paralelo para máxima velocidad
+    const [snapAsistencia, snapAlumnos] = await Promise.all([
+        getDocs(collection(db, "asistencia", hoyId, "registros")),
+        getDocs(collection(db, "alumnos"))
+    ]);
+    
+    if(snapAsistencia.empty) return alert("No hay datos para exportar hoy.");
+
+    // 2. MAPEO INSTANTÁNEO: Diccionario de alumnos para evitar 750 getDoc()
+    const mapaAlumnos = {};
+    snapAlumnos.forEach(docAlu => {
+        mapaAlumnos[docAlu.id] = docAlu.data();
+    });
 
     const datosPorGrado = {};
-    for (const d of snap.docs) {
-        const dataAsis = d.data();
-        let gradoSec = "N/A";
 
-        const docAlu = await getDoc(doc(db, "alumnos", d.id));
-        if (docAlu.exists()) {
-            const alu = docAlu.data();
-            gradoSec = `${alu.grado}° "${alu.seccion}"`.toUpperCase();
-        }
+    // 3. PROCESAMIENTO DE DATOS
+    snapAsistencia.forEach(d => {
+        const dataAsis = d.data();
+        const aluInfo = mapaAlumnos[d.id] || {};
+        
+        // Obtenemos grado y sección desde la base de datos de alumnos
+        const gradoSec = aluInfo.grado && aluInfo.seccion 
+            ? `${aluInfo.grado}° "${aluInfo.seccion}"`.toUpperCase()
+            : "N/A";
 
         if (!datosPorGrado[gradoSec]) datosPorGrado[gradoSec] = [];
         
-        // Limpiamos el texto para quitar el emoji si existiera en la BD
-        const conductaTexto = (dataAsis.conductaAlerta || "").replace("⚠️ ", "");
+        // CONSOLIDACIÓN DE INCIDENCIAS SIN EMOJIS
+        const incidencias = [
+            dataAsis.alertaSalud || "",
+            dataAsis.alertaConducta || "",
+            dataAsis.alertaCorte || "",
+            dataAsis.alertaVestimenta || "",
+            (dataAsis.conductaAlerta || "").replace("⚠️ ", "")
+        ].filter(x => x !== "").map(x => x.toUpperCase());
+
+        const todasObservaciones = incidencias.join(", ");
 
         datosPorGrado[gradoSec].push([
             dataAsis.hora || '--:--', 
             d.id, 
-            dataAsis.nombres.toUpperCase(), 
+            dataAsis.nombres?.toUpperCase() || "DESCONOCIDO", 
             gradoSec, 
-            dataAsis.estado.toUpperCase(),
-            conductaTexto.toUpperCase()
+            dataAsis.estado?.toUpperCase() || "FALTÓ",
+            todasObservaciones
         ]);
-    }
+    });
 
     const grados = Object.keys(datosPorGrado).sort();
     
+    // 4. GENERACIÓN DE PÁGINAS DEL PDF
     grados.forEach((grado, index) => {
         if (index > 0) docPDF.addPage();
 
-        // Encabezado idéntico al anterior
+        // Encabezado Institucional HZG
         docPDF.setTextColor(21, 128, 61); 
         docPDF.setFontSize(16);
         docPDF.setFont("helvetica", "bold");
@@ -579,14 +633,16 @@ window.generarReportePDF = async () => {
         docPDF.text(`FECHA: ${hoyId}`, 14, 35);
         docPDF.text(`GRADO Y SECCIÓN: ${grado}`, 14, 42);
 
+        // Tabla de datos
         docPDF.autoTable({ 
             startY: 48, 
-            head: [['HORA', 'DNI', 'ESTUDIANTE', 'G/S', 'ESTADO', 'OBS. CONDUCTA']], 
+            head: [['HORA', 'DNI', 'ESTUDIANTE', 'G/S', 'ESTADO', 'OBSERVACIONES']], 
             body: datosPorGrado[grado], 
             headStyles: { fillColor: [21, 128, 61], textColor: [255, 255, 255], fontStyle: 'bold' },
-            styles: { fontSize: 8, cellPadding: 3 },
+            styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
             columnStyles: {
-                5: { cellWidth: 45, textColor: [180, 0, 0], fontStyle: 'bold' } // Rojo para la observación
+                2: { cellWidth: 50 }, // Estudiante
+                5: { cellWidth: 55, textColor: [180, 0, 0], fontStyle: 'bold' } // Observaciones en rojo
             },
             alternateRowStyles: { fillColor: [240, 253, 244] }
         });
@@ -598,67 +654,80 @@ window.generarReportePDF = async () => {
 // --- 5. EXPORTACIÓN EXCEL ---
 window.generarReporteExcel = async () => {
     const hoyId = new Date().toLocaleDateString('en-CA');
-    const snap = await getDocs(collection(db, "asistencia", hoyId, "registros"));
     
-    if (snap.empty) return alert("No hay datos para exportar hoy.");
+    // 1. Obtener todos los datos en paralelo (solo 2 peticiones a Firebase en total)
+    const [snapAsistencia, snapAlumnos] = await Promise.all([
+        getDocs(collection(db, "asistencia", hoyId, "registros")),
+        getDocs(collection(db, "alumnos"))
+    ]);
+    
+    if (snapAsistencia.empty) return alert("No hay datos para exportar hoy.");
+
+    // 2. Crear un mapa de búsqueda instantánea para los nombres de apoderados
+    const mapaAlumnos = {};
+    snapAlumnos.forEach(docAlu => {
+        mapaAlumnos[docAlu.id] = docAlu.data();
+    });
 
     const datosPorGrado = {};
 
-    for (const d of snap.docs) {
+    // 3. Procesar los 750 registros en memoria (esto es instantáneo)
+    snapAsistencia.forEach(d => {
         const data = d.data();
-        let gradoSec = "N/A";
-        const docAlu = await getDoc(doc(db, "alumnos", d.id));
-        if (docAlu.exists()) {
-            const alu = docAlu.data();
-            gradoSec = `${alu.grado}${alu.seccion}`.toUpperCase();
-        }
+        const aluInfo = mapaAlumnos[d.id] || {};
+        const gradoSec = `${aluInfo.grado || data.grado || '?'}${aluInfo.seccion || data.seccion || '?'}`.toUpperCase();
+
         if (!datosPorGrado[gradoSec]) datosPorGrado[gradoSec] = [];
         
-        // Quitamos el símbolo de advertencia del texto
-        const conductaLimpia = (data.conductaAlerta || "").replace("⚠️ ", "");
+        // Consolidación de incidencias
+        const incidencias = [
+            data.alertaSalud || "",
+            data.alertaConducta || "",
+            data.alertaCorte || "",
+            data.alertaVestimenta || "",
+            (data.conductaAlerta || "").replace("⚠️ ", "")
+        ].filter(x => x !== "").map(x => x.toUpperCase());
 
         datosPorGrado[gradoSec].push({
             "HORA": data.hora || '--:--',
             "DNI": d.id,
-            "ESTUDIANTE": data.nombres.toUpperCase(),
-            "GRADO/SEC": gradoSec,
-            "ESTADO": data.estado.toUpperCase(),
-            "OBSERVACIÓN CONDUCTA": conductaLimpia.toUpperCase()
+            "ESTUDIANTE": data.nombres?.toUpperCase() || "DESCONOCIDO",
+            "G/S": gradoSec,
+            "ESTADO": data.estado?.toUpperCase() || "FALTÓ",
+            "OBSERVACIONES": incidencias.join(", ")
         });
-    }
+    });
 
+    // 4. Crear el libro de Excel
     const wb = XLSX.utils.book_new();
-
     Object.keys(datosPorGrado).sort().forEach(grado => {
         const ws = XLSX.utils.json_to_sheet(datosPorGrado[grado]);
         
-        // Estilos de encabezado verde (Mantiene tu diseño original)
+        // Estilos institucionales
         const range = XLSX.utils.decode_range(ws['!ref']);
         for (let C = range.s.c; C <= range.e.c; ++C) {
-            const address = XLSX.utils.encode_cell({ r: 0, c: C });
-            if (!ws[address]) continue;
-            ws[address].s = {
+            const cell = XLSX.utils.encode_cell({ r: 0, c: C });
+            if (!ws[cell]) continue;
+            ws[cell].s = {
                 fill: { fgColor: { rgb: "15803D" } },
                 font: { color: { rgb: "FFFFFF" }, bold: true },
                 alignment: { horizontal: "center" }
             };
         }
 
-        ws['!cols'] = [
-            { wch: 10 }, { wch: 12 }, { wch: 45 }, { wch: 10 }, { wch: 15 }, { wch: 35 }
-        ];
-
+        ws['!cols'] = [{ wch: 10 }, { wch: 12 }, { wch: 45 }, { wch: 8 }, { wch: 15 }, { wch: 50 }];
         XLSX.utils.book_append_sheet(wb, ws, `GRADO ${grado}`);
     });
 
-    XLSX.writeFile(wb, `Reporte_Asistencia_HZG_${hoyId}.xlsx`);
+    // 5. Descarga final
+    XLSX.writeFile(wb, `Reporte_HZG_${hoyId}.xlsx`);
 };
 
 // REEMPLAZO EXACTO: Borra la de UltraMsg y pega esta
 const enviarNotificacionUltraMsg = async (telefono, nombre, estado, mensajePersonalizado = null) => {
-    // NUEVA URL: Ahora apunta directamente a la nube de UltraMsg
+    // URL: Ahora apunta directamente a la nube de UltraMsg
     const url = "https://api.ultramsg.com/instance169160/messages/chat";
-    const token = "bkd2pujvtq9icz2w"; // Tu token de la captura
+    const token = "bkd2pujvtq9icz2w"; // El token
     
     const mensaje = mensajePersonalizado || `*I.E. HORACIO ZEBALLOS GÁMEZ*\n\nHola, se informa que el estudiante *${nombre.toUpperCase()}* registró su ingreso como: *${estado.toUpperCase()}*.\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
 
@@ -956,16 +1025,18 @@ function renderizarTablaConPaginacion() {
     const subsetAlumnos = alumnosFiltradosMemoria.slice(inicio, fin);
 
     if (subsetAlumnos.length === 0) {
-        tabla.innerHTML = `<tr><td colspan="5" class="p-10 text-center italic text-slate-400">No hay alumnos para mostrar.</td></tr>`;
+        tabla.innerHTML = `<tr><td colspan="6" class="p-10 text-center italic text-slate-400">No hay alumnos para mostrar.</td></tr>`;
         return;
     }
 
     subsetAlumnos.forEach(a => {
-        // Usamos backticks (`) para el template string
         tabla.innerHTML += `
             <tr class="border-b hover:bg-green-50 transition">
                 <td class="p-4 font-mono text-sm text-slate-600">${a.dni}</td>
-                <td class="p-4 font-bold text-slate-700 uppercase">${a.nombres}</td>
+                <td class="p-4">
+                    <div class="font-bold text-slate-700 uppercase">${a.nombres}</div>
+                    <div class="text-[10px] text-blue-600 font-bold uppercase">APODERADO: ${a.apoderado || 'SIN REGISTRAR'}</div>
+                </td>
                 <td class="p-4 text-center">
                     <span class="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-xs font-black">${a.grado}°</span>
                 </td>
@@ -978,7 +1049,7 @@ function renderizarTablaConPaginacion() {
                                 class="bg-green-100 text-green-700 px-3 py-1 rounded font-bold text-[10px] hover:bg-green-600 hover:text-white transition">
                             CARNET
                         </button>
-                        <button onclick="window.editarAlumno('${a.dni}', '${a.nombres}', '${a.grado}', '${a.seccion}', '${a.telefono}')" 
+                        <button onclick="window.editarAlumno('${a.dni}', '${a.nombres}', '${a.grado}', '${a.seccion}', '${a.telefono}', '${a.apoderado || ""}')" 
                                 class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded font-bold text-[10px] hover:bg-yellow-600 hover:text-white transition">
                             EDITAR
                         </button>
@@ -1030,80 +1101,97 @@ window.moverPaginaAlumnos = (dir) => {
     document.getElementById('buscador').scrollIntoView({ behavior: 'smooth' });
 };
 // --- FUNCIONES DE APOYO ---
-window.editarAlumno = (dni, nombres, grado, seccion, telefono) => {
+window.editarAlumno = (dni, nombres, grado, seccion, telefono, apoderado) => {
     document.getElementById('dni').value = dni;
     document.getElementById('nombres').value = nombres;
     document.getElementById('grado').value = grado;
     document.getElementById('seccion').value = seccion;
     document.getElementById('telefono').value = telefono;
+    
+    // Asignar el valor al nuevo campo del apoderado
+    if (document.getElementById('apoderado')) {
+        document.getElementById('apoderado').value = apoderado || "";
+    }
+    
     window.mostrarSeccion('registro');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
 window.eliminarAlumno = async (id) => { if(confirm("¿Eliminar?")) await deleteDoc(doc(db, "alumnos", id)); };
 
 // --- 3. JUSTIFICAR Y CONDUCTA (Sincronizado con el modelo de la App) ---
 window.justificarFalta = async (dni, nombre) => {
-    const n = prompt(`Cambiar estado para ${nombre.toUpperCase()}:\n1. Puntual\n2. Tardanza\n3. Salida por Salud\n4. Tardanza Justificada\n5. Falta Justificada\n6. Falta\n7. REPORTAR CONDUCTA INADECUADA`, "1");
+    const n = prompt(`Cambiar estado para ${nombre.toUpperCase()}:\n1. Puntual\n2. Tardanza\n3. Salida por Salud\n4. Tardanza Justificada\n5. Falta Justificada\n6. Falta\n7. Indisciplina\n8. Vestimenta Inadecuada\n9. Corte Inadecuado`, "1");
     
     const ahora = new Date();
-    // Formato de hora HH:mm:ss
     const horaActual = ahora.toLocaleTimeString('es-PE', { hour12: false });
     const hoy = document.getElementById('fechaConsulta')?.value || ahora.toLocaleDateString('en-CA');
 
-    if (n === "7") {
-        try {
-            const idConducta = Date.now().toString();
-            // Guardar en historial
-            await setDoc(doc(db, "alumnos", dni, "conducta", idConducta), {
-                fecha: hoy, 
-                hora: horaActual, 
-                incidencia: "Conducta Inadecuada", 
-                nombres: nombre.toUpperCase()
-            });
-
-            // Reflejar en la lista de asistencia
-            await setDoc(doc(db, "asistencia", hoy, "registros", dni), { 
-                conductaAlerta: `CONDUCTA INADECUADA (${horaActual})` 
-            }, { merge: true });
-
-            const docAlu = await getDoc(doc(db, "alumnos", dni));
-            if (docAlu.exists() && docAlu.data().telefono) {
-                // MODELO DE MENSAJE PARA CONDUCTA (Igual al de la imagen)
-                const msj = `*REPORTE DE CONDUCTA - I.E. HZG*\n\n` +
-                            `Estimado apoderado, se le informa que el estudiante:\n` +
-                            `*${nombre.toUpperCase()}*\n\n` +
-                            `Ha presentado una *CONDUCTA INADECUADA* dentro de la institución.\n` +
-                            `Hora del reporte: ${horaActual}\n\n` +
-                            `Se solicita su presencia o comunicación con el auxiliar de turno.\n\n` +
-                            `_Disciplina, Lealtad, Honradez._`;
-                
-                await window.enviarNotificacionUltraMsg(docAlu.data().telefono, msj);
-            }
-            alert("✅ Reporte de conducta enviado al WhatsApp.");
-            return; 
-        } catch (e) { alert("Error al reportar conducta"); return; }
-    }
-
-    const estados = ["", "Puntual", "Tardanza", `Salida por Salud (${horaActual})`, "Tardanza Justificada", "Falta Justificada", "Falta"];
-    const nuevoEstado = estados[n];
-    if (!nuevoEstado) return;
-
     try {
-        await setDoc(doc(db, "asistencia", hoy, "registros", dni), { estado: nuevoEstado }, { merge: true });
-        
         const docAlu = await getDoc(doc(db, "alumnos", dni));
-        if (docAlu.exists() && docAlu.data().telefono) {
-            // MODELO DE MENSAJE PARA ACTUALIZACIÓN DE ASISTENCIA
-            const msj = `*CONTROL DE ASISTENCIA HZG*\n\n` +
-                        `Estudiante: *${nombre.toUpperCase()}*\n` +
-                        `Estado Actualizado: *${nuevoEstado.toUpperCase()}*\n` +
-                        `Hora del cambio: ${horaActual}\n\n` +
-                        `_Malingas: Disciplina, Lealtad, Honradez._`;
-            
-            await window.enviarNotificacionUltraMsg(docAlu.data().telefono, msj);
+        if (!docAlu.exists()) return alert("Alumno no encontrado.");
+        
+        const datosAlumno = docAlu.data();
+        const telefono = datosAlumno.telefono;
+        const nombreApoderado = datosAlumno.apoderado ? datosAlumno.apoderado.toUpperCase() : "APODERADO";
+
+        let updates = {};
+        let mensajeWhatsApp = "";
+        let esIncidencia = false;
+
+        switch (n) {
+            case "1": case "2": case "4": case "5": case "6":
+                const estados = ["", "Puntual", "Tardanza", "", "Tardanza Justificada", "Falta Justificada", "Falta"];
+                updates = { estado: estados[n] };
+                mensajeWhatsApp = `*CONTROL DE ASISTENCIA HZG*\n\nEstimado(a) *${nombreApoderado}*,\nEstudiante: *${nombre.toUpperCase()}*\nEstado Actualizado: *${updates.estado.toUpperCase()}*\nHora: ${horaActual}\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
+                break;
+
+            case "3": // SALIDA POR SALUD
+                updates = { alertaSalud: `SALIDA SALUD (${horaActual})` };
+                mensajeWhatsApp = `*REPORTE MÉDICO - I.E. HZG*\n\nEstimado(a) *${nombreApoderado}*,\nSe informa que el estudiante *${nombre.toUpperCase()}* se retira por motivos de SALUD.\nHora: ${horaActual}\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
+                break;
+
+            case "7": // INDISCIPLINA
+                updates = { alertaConducta: `CONDUCTA INADECUADA (${horaActual})` };
+                esIncidencia = true;
+                mensajeWhatsApp = `*REPORTE DE CONDUCTA - I.E. HZG*\n\nEstimado(a) *${nombreApoderado}*,\nse le informa que el estudiante *${nombre.toUpperCase()}* ha presentado una *CONDUCTA INADECUADA*.\nHora: ${horaActual}\n\nSe estara coordinando para que se acerque a la institución educativa.\n\n_Disciplina, Lealtad, Honradez._`;
+                break;
+
+            case "8": // VESTIMENTA
+                updates = { alertaVestimenta: `VESTIMENTA INADECUADA (${horaActual})` };
+                mensajeWhatsApp = `*REPORTE DE VESTIMENTA - I.E. HZG*\n\nEstimado(a) *${nombreApoderado}*,\nse le informa que el estudiante *${nombre.toUpperCase()}* registra: *VESTIMENTA INADECUADA*.\nHora: ${horaActual}\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
+                break;
+
+            case "9": // CORTE
+                updates = { alertaCorte: `CORTE INADECUADO (${horaActual})` };
+                mensajeWhatsApp = `*REPORTE DE PRESENTACIÓN - I.E. HZG*\n\nEstimado(a) *${nombreApoderado}*,\nse le informa que el estudiante *${nombre.toUpperCase()}* registra: *CORTE DE CABELLO INADECUADO*.\nHora: ${horaActual}\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
+                break;
+
+            default: return;
         }
-        alert("✅ Estado actualizado y notificado.");
-    } catch (e) { console.error(e); }
+
+        // Si es indisciplina (7), también guardamos en el historial de conducta del alumno
+        if (n === "7") {
+            const idConducta = Date.now().toString();
+            await setDoc(doc(db, "alumnos", dni, "conducta", idConducta), {
+                fecha: hoy, hora: horaActual, incidencia: "Conducta Inadecuada", nombres: nombre.toUpperCase()
+            });
+        }
+
+        // Actualizamos en la lista de asistencia de hoy (usando merge para no chancar otros datos)
+        await setDoc(doc(db, "asistencia", hoy, "registros", dni), updates, { merge: true });
+        
+        // Enviamos notificación
+        if (telefono && mensajeWhatsApp) {
+            await window.enviarNotificacionUltraMsg(telefono, mensajeWhatsApp);
+        }
+        
+        alert("✅ Registro actualizado y notificado al apoderado.");
+
+    } catch (e) { 
+        console.error(e); 
+        alert("Error al procesar la solicitud."); 
+    }
 };
 
 // NUEVA FUNCIÓN PARA TU BOT PROPIO (Node.js)

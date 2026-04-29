@@ -72,22 +72,26 @@
                         <h2 class="text-lg font-bold text-slate-700 uppercase">Gestión de Alumnos</h2>
                     </div>
                     <form id="registroForm" class="space-y-4">
-                        <div class="flex gap-2">
-                            <input type="text" id="dni" placeholder="Documento DNI" maxlength="8" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
-                            <button type="button" onclick="window.consultarDNI()" id="btnBuscarDNI" class="bg-blue-600 text-white px-4 rounded-xl font-bold hover:bg-blue-700 transition flex items-center justify-center min-w-[50px]">
-                                <span id="iconoBusqueda">🔍</span>
-                            </button>
-                        </div>
-                        <input type="text" id="nombres" placeholder="Nombres y Apellidos" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
-                        <div class="grid grid-cols-2 gap-3">
-                            <input type="text" id="grado" placeholder="Grado (Ej: 5)" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition">
-                            <input type="text" id="seccion" placeholder="Sección (Ej: A)" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition">
-                        </div>
-                        <input type="tel" id="telefono" placeholder="WhatsApp Apoderado" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
-                        <button type="submit" class="w-full bg-malingas-green text-white py-4 rounded-xl font-bold hover:bg-green-800 transition shadow-lg uppercase tracking-wider">
-                            💾 Guardar Alumno
-                        </button>
-                    </form>
+    <div class="flex gap-2">
+        <input type="text" id="dni" placeholder="Documento DNI" maxlength="8" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+        <button type="button" onclick="window.consultarDNI()" id="btnBuscarDNI" class="bg-blue-600 text-white px-4 rounded-xl font-bold hover:bg-blue-700 transition flex items-center justify-center min-w-[50px]">
+            <span id="iconoBusqueda">🔍</span>
+        </button>
+    </div>
+    <input type="text" id="nombres" placeholder="Nombres y Apellidos del Estudiante" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+    
+    <input type="text" id="apoderado" placeholder="Nombre completo del Padre o Apoderado" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+    
+    <div class="grid grid-cols-2 gap-3">
+        <input type="text" id="grado" placeholder="Grado (Ej: 5)" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition">
+        <input type="text" id="seccion" placeholder="Sección (Ej: A)" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition">
+    </div>
+    <input type="tel" id="telefono" placeholder="WhatsApp del Apoderado" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+    
+    <button type="submit" class="w-full bg-malingas-green text-white py-4 rounded-xl font-bold hover:bg-green-800 transition shadow-lg uppercase tracking-wider">
+        💾 Guardar Alumno
+    </button>
+</form>
                 </div>
 
                 <div class="bg-white p-6 rounded-2xl shadow-xl border-2 border-dashed border-blue-200">
@@ -151,14 +155,13 @@
                     <div class="overflow-x-auto bg-white rounded-xl">
                         <table class="w-full text-left">
                             <thead>
-                                <tr class="bg-green-50 text-green-700 text-[11px] font-black uppercase border-b-2 border-green-100">
-                                    <th class="p-4">DNI</th>
-                                    <th class="p-4">Estudiante</th>
-                                    <th class="p-4 text-center">Grado</th>
-                                    <th class="p-4 text-center">Sección</th>
-                                    <th class="p-4 text-center">Acciones</th>
-                                </tr>
-                            </thead>
+    <tr class="bg-green-50 text-green-700 text-[11px] font-black uppercase border-b-2 border-green-100">
+        <th class="p-4">DNI</th>
+        <th class="p-4">Estudiante / Apoderado</th> <th class="p-4 text-center">Grado</th>
+        <th class="p-4 text-center">Sección</th>
+        <th class="p-4 text-center">Acciones</th>
+    </tr>
+</thead>
                             <tbody id="tablaAlumnos" class="text-slate-600 text-sm"></tbody>
                         </table>
                     </div>
@@ -173,7 +176,7 @@
             </div>
             <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
                 <div class="flex flex-col md:flex-row justify-between items-center mb-6 border-b pb-4 gap-4">
-                    <h2 class="text-xl font-black text-slate-700 uppercase">Control de Ingreso Hoy</h2>
+                    <h2 class="text-xl font-black text-slate-700 uppercase">Control de Asistencia</h2>
                     <div class="flex gap-2">
                         <button onclick="window.generarReportePDF()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-emerald-700 transition flex items-center gap-2 text-xs font-bold uppercase"><span>📄</span> PDF</button>
                         <button onclick="window.generarReporteExcel()" class="bg-blue-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-blue-700 transition flex items-center gap-2 text-xs font-bold uppercase"><span>📊</span> Excel</button>
