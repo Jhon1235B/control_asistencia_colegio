@@ -3,12 +3,9 @@ import {
     getFirestore, collection, doc, setDoc, onSnapshot, 
     deleteDoc, getDoc, getDocs, query, writeBatch 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-const ULTRAMSG_CONFIG = {
-    instanceId: "instance169160",
-    token: "bkd2pujvtq9icz2w",
-    baseUrl: "https://api.ultramsg.com/instance169160/messages/chat"
-};
+const NUEVA_API_URL = 'https://ugeltambogrande.260mb.net/simgcase/ajax_enviar_whatsapp.php';
 
 const firebaseConfig = {
     apiKey: "AIzaSyCqHy9ny-hi_92Rem_Y7QQlhGVCM_7yEcQ",
@@ -21,35 +18,84 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 
-// --- 1. GUARDAR / EDITAR ALUMNO ---
-const registroForm = document.getElementById('registroForm');
-if(registroForm) {
-    registroForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const dni = document.getElementById('dni').value;
-        const datos = {
-            dni: dni,
-            nombres: document.getElementById('nombres').value.toUpperCase(),
-            apoderado: document.getElementById('apoderado').value.toUpperCase(), // 👈 Nueva línea
-            grado: document.getElementById('grado').value,
-            seccion: document.getElementById('seccion').value,
-            telefono: document.getElementById('telefono').value
-        };
-        try {
-            await setDoc(doc(db, "alumnos", dni), datos);
-            alert("Alumno guardado con éxito");
-            window.generarSoloQR(dni);
-            registroForm.reset();
-        } catch (error) { alert("Error al guardar: " + error.message); }
+// 1. Proteger el sistema al cargar la página
+document.addEventListener('DOMContentLoaded', () => {
+    // Ocultar las secciones del sistema hasta validar la sesión
+    document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
+
+    onAuthStateChanged(auth, (user) => {
+        const loginSection = document.getElementById('sec-login');
+        if (user) {
+            // Usuario autenticado, mostramos la sección principal (ej. Registro) y ocultamos el login
+            if (loginSection) loginSection.classList.add('hidden');
+            document.getElementById('sec-registro').classList.remove('hidden');
+        } else {
+            // No hay sesión activa, mostramos la pantalla de login
+            if (loginSection) loginSection.classList.remove('hidden');
+        }
     });
-}
+
+    const registroForm = document.getElementById('registroForm');
+    if(registroForm) {
+        registroForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const dni = document.getElementById('dni').value;
+            const datos = {
+                dni: dni,
+                nombres: document.getElementById('nombres').value.toUpperCase(),
+                apoderado: document.getElementById('apoderado').value.toUpperCase(),
+                grado: document.getElementById('grado').value,
+                seccion: document.getElementById('seccion').value,
+                telefono: document.getElementById('telefono').value
+            };
+            try {
+                await setDoc(doc(db, "alumnos", dni), datos);
+                alert("Alumno guardado con éxito");
+                window.generarSoloQR(dni);
+                registroForm.reset();
+            } catch (error) { alert("Error al guardar: " + error.message); }
+        });
+    }
+    
+    // 2. Manejar el evento de envío del formulario de login
+    const formLogin = document.getElementById('formLogin');
+    if (formLogin) {
+        formLogin.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                alert("¡Bienvenido al sistema!");
+                document.getElementById('sec-login').classList.add('hidden');
+                document.getElementById('sec-registro').classList.remove('hidden');
+            } catch (error) {
+                alert("Error al iniciar sesión: " + error.message);
+            }
+        });
+    }
+    
+    // Llamamos a la inicialización aquí
+    if (typeof iniciarControlAsistencia === 'function') {
+        iniciarControlAsistencia(); 
+    }
+});
+
+// 3. Función para cerrar sesión
+window.cerrarSesion = async () => {
+    try {
+        await signOut(auth);
+        window.location.reload();
+    } catch (error) {
+        console.error("Error al cerrar sesión", error);
+    }
+};
 
 window.cambiarFechaAsistencia = (nuevaFecha) => {
-    // nuevaFecha viene en formato YYYY-MM-DD del input
     console.log("Cambiando vista a:", nuevaFecha);
-    
-    // Llamamos a la función que escucha la asistencia pero con la fecha seleccionada
     iniciarControlAsistencia(nuevaFecha);
 };
 
@@ -553,7 +599,359 @@ window.imprimirCarnet = async (dni) => {
         alert("Error al generar impresión del carnet");
     }
 };
+// --- NUEVO MÓDULO DE REPORTE DIARIO GENERAL ---
+window.generarReporteDiarioGeneral = async () => {
+    const mes = document.getElementById('mesConsulta')?.value; // Formato: "2025-03"
+    const filtroGrado = document.getElementById('filtroGrado')?.value || "";
+    const filtroSeccion = document.getElementById('filtroSeccion')?.value || "";
+    const tbody = document.getElementById('tablaReporteGeneral');
 
+    if (!mes) {
+        alert("Por favor selecciona un mes antes de generar el reporte.");
+        return;
+    }
+    if (!tbody) {
+        alert("El contenedor de la tabla de reporte no existe en la vista actual.");
+        return;
+    }
+
+    tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-slate-400 italic">
+        ⏳ Cargando reporte mensual de ${mes}, por favor espere...
+    </td></tr>`;
+
+    try {
+        // 1. Obtener todos los alumnos y aplicar filtros de grado/sección
+        const snapAlumnos = await getDocs(collection(db, "alumnos"));
+        const alumnos = {};
+
+        snapAlumnos.forEach(docAlu => {
+            const data = docAlu.data();
+            const grado = String(data.grado || '').trim();
+            const seccion = String(data.seccion || '').trim().toUpperCase();
+
+            // Aplicar filtros opcionales
+            if (filtroGrado && grado !== filtroGrado) return;
+            if (filtroSeccion && seccion !== filtroSeccion.toUpperCase()) return;
+
+            alumnos[docAlu.id] = {
+                ...data,
+                dni: docAlu.id,
+                asistencias: 0,
+                tardanzas: 0,
+                faltas: 0,
+                malComportamiento: []
+            };
+        });
+
+        // 2. Generar lista de todas las fechas del mes seleccionado
+        const [year, month] = mes.split('-').map(Number);
+        const diasEnMes = new Date(year, month, 0).getDate();
+        const fechas = [];
+        for (let d = 1; d <= diasEnMes; d++) {
+            const fecha = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            fechas.push(fecha);
+        }
+
+        // 3. Consultar asistencia de cada día del mes en lotes (evitar sobrecarga)
+        const LOTE = 7;
+        for (let i = 0; i < fechas.length; i += LOTE) {
+            const lote = fechas.slice(i, i + LOTE);
+            const snaps = await Promise.all(
+                lote.map(fecha => getDocs(collection(db, "asistencia", fecha, "registros")))
+            );
+
+            snaps.forEach(snap => {
+                snap.forEach(docReg => {
+                    const dni = docReg.id;
+                    if (!alumnos[dni]) return; // No está en el filtro actual
+
+                    const data = docReg.data();
+                    const estado = (data.estado || '').toLowerCase();
+
+                    // Clasificar estado del día
+                    if (estado.includes('tardanza')) {
+                        alumnos[dni].tardanzas++;
+                        alumnos[dni].asistencias++;
+                    } else if (estado.includes('falta')) {
+                        alumnos[dni].faltas++;
+                    } else if (estado.includes('puntual') || estado.includes('asistió') || estado !== '') {
+                        alumnos[dni].asistencias++;
+                    } else {
+                        alumnos[dni].faltas++;
+                    }
+
+                    // Registrar incidencias de comportamiento
+                    const incidencias = [
+                        data.alertaSalud || "",
+                        data.alertaConducta || "",
+                        data.alertaCorte || "",
+                        data.alertaVestimenta || ""
+                    ].filter(x => x !== "");
+
+                    if (incidencias.length > 0) {
+                        alumnos[dni].malComportamiento.push(...incidencias);
+                    }
+                });
+            });
+        }
+
+        // 4. Ordenar lista: por grado, sección y nombre
+        const lista = Object.values(alumnos).sort((a, b) => {
+            const gradoComp = String(a.grado || '').localeCompare(String(b.grado || ''));
+            if (gradoComp !== 0) return gradoComp;
+            const secComp = String(a.seccion || '').localeCompare(String(b.seccion || ''));
+            if (secComp !== 0) return secComp;
+            return (a.nombres || '').localeCompare(b.nombres || '');
+        });
+
+        // 5. Guardar datos para la descarga Excel/PDF
+        window.reporteMensualData = lista;
+
+        // 6. Renderizar tabla
+        tbody.innerHTML = '';
+
+        if (lista.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-slate-400 italic">
+                No hay alumnos registrados con los filtros seleccionados.
+            </td></tr>`;
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        lista.forEach(alu => {
+            const tr = document.createElement('tr');
+            tr.className = "border-b hover:bg-slate-50 transition";
+            tr.innerHTML = `
+                <td class="p-4">
+                    <div class="font-bold text-slate-800 uppercase">${alu.nombres || 'S/N'}</div>
+                    <div class="text-[10px] text-blue-600 font-bold">APO: ${alu.apoderado || '---'}</div>
+                </td>
+                <td class="p-4 text-center font-mono text-xs text-slate-500">${alu.dni || '---'}</td>
+                <td class="p-4 text-center">
+                    <span class="bg-slate-100 text-slate-700 px-2 py-1 rounded-md text-xs font-black">${alu.grado || '-'}°</span>
+                </td>
+                <td class="p-4 text-center">
+                    <span class="bg-slate-100 text-slate-700 px-2 py-1 rounded-md text-xs font-black">${alu.seccion || '-'}</span>
+                </td>
+                <td class="p-4 text-center">
+                    <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-black">
+                        ${alu.asistencias} días
+                    </span>
+                </td>
+                <td class="p-4 text-center">
+                    <span class="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-black mr-1">
+                        ${alu.faltas}F
+                    </span>
+                    <span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-xs font-black">
+                        ${alu.tardanzas}T
+                    </span>
+                    ${alu.malComportamiento.length > 0 ? `
+                    <div class="text-[9px] text-red-500 font-bold mt-1 uppercase">
+                        ⚠️ ${alu.malComportamiento.length} incidencia(s)
+                    </div>` : ''}
+                </td>
+            `;
+            fragment.appendChild(tr);
+        });
+        tbody.appendChild(fragment);
+
+    } catch (error) {
+        console.error("Error en reporte mensual:", error);
+        tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-red-500 italic">
+            Error al generar reporte: ${error.message}
+        </td></tr>`;
+    }
+};
+
+window.cargarAsistenciaDelDia = async (fechaSeleccionada) => {
+    if (!fechaSeleccionada) {
+        fechaSeleccionada = new Date().toLocaleDateString('en-CA');
+        const fechaEl = document.getElementById('fechaConsulta');
+        if (fechaEl) fechaEl.value = fechaSeleccionada;
+    }
+
+    const contenedorAsistencia = document.getElementById('asistenciaHoy');
+    if (!contenedorAsistencia) return;
+
+    contenedorAsistencia.innerHTML = `
+        <div class="overflow-x-auto bg-white rounded-xl max-h-[500px] custom-scroll">
+            <table class="w-full text-left border-collapse">
+                <thead class="sticky top-0 bg-green-50 text-green-700 text-[11px] font-black uppercase border-b-2 border-green-100 z-10">
+                    <tr>
+                        <th class="p-4 text-center">N°</th>
+                        <th class="p-4">Estudiante</th>
+                        <th class="p-4 text-center">Grado / Sección</th>
+                        <th class="p-4 text-center">Hora de Registro</th>
+                        <th class="p-4 text-center">Estado</th>
+                        <th class="p-4">Observaciones</th>
+                    </tr>
+                </thead>
+                <tbody id="cuerpoTablaAsistenciaDia" class="text-slate-600 text-sm divide-y divide-slate-100">
+                    <tr>
+                        <td colspan="6" class="p-10 text-center text-slate-400 italic">Cargando la asistencia de todas las secciones...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    try {
+        const [snapAsistencia, snapAlumnos] = await Promise.all([
+            getDocs(collection(db, "asistencia", fechaSeleccionada, "registros")),
+            getDocs(collection(db, "alumnos"))
+        ]);
+
+        const mapaAlumnos = {};
+        snapAlumnos.forEach(docAlu => {
+            const dataAlu = docAlu.data();
+            mapaAlumnos[docAlu.id] = dataAlu; 
+        });
+
+        const tbody = document.getElementById('cuerpoTablaAsistenciaDia');
+        tbody.innerHTML = '';
+
+        let index = 1;
+        const gradosAceptados = ['1', '2', '3', '4', '5'];
+        const seccionesAceptadas = ['A', 'B', 'C', 'D', 'E'];
+
+        const listaAlumnos = Object.values(mapaAlumnos).filter(alu => 
+            gradosAceptados.includes(String(alu.grado).trim()) && 
+            seccionesAceptadas.includes(String(alu.seccion).trim().toUpperCase())
+        );
+
+        if (listaAlumnos.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-slate-400">No hay alumnos registrados con los parámetros indicados.</td></tr>`;
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+
+        listaAlumnos.forEach(alu => {
+            const registro = snapAsistencia.docs.find(d => d.id === alu.dni);
+            
+            let hora = '--:--';
+            let estado = 'FALTÓ';
+            let colorEstado = 'bg-red-50 text-red-700';
+            let observacion = 'Sin incidencias';
+
+            if (registro) {
+                const datosReg = registro.data();
+                hora = datosReg.hora || '--:--';
+                estado = (datosReg.estado || 'ASISTIÓ').toUpperCase();
+
+                if (estado.includes('PUNTUAL') || estado.includes('ASISTIÓ')) {
+                    colorEstado = 'bg-green-100 text-green-700';
+                } else if (estado.includes('TARDANZA')) {
+                    colorEstado = 'bg-yellow-100 text-yellow-700';
+                }
+
+                if (datosReg.observacion) {
+                    observacion = datosReg.observacion;
+                }
+            }
+
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-slate-50 transition";
+
+            tr.innerHTML = `
+                <td class="p-4 text-center font-bold text-slate-700">${index}</td>
+                <td class="p-4">
+                    <div class="font-bold text-slate-800">${alu.nombres || 'S/N'}</div>
+                    <div class="text-[10px] text-slate-400 font-mono">DNI: ${alu.dni || '---'}</div>
+                </td>
+                <td class="p-4 text-center">
+                    <span class="bg-green-50 text-green-700 px-2.5 py-0.5 rounded-full font-black text-xs">
+                        ${alu.grado || ''}° "${alu.seccion || ''}"
+                    </span>
+                </td>
+                <td class="p-4 text-center font-mono text-xs">${hora}</td>
+                <td class="p-4 text-center">
+                    <span class="px-2.5 py-0.5 rounded-full font-black text-xs ${colorEstado}">
+                        ${estado}
+                    </span>
+                </td>
+                <td class="p-4 text-xs font-medium text-slate-600">${observacion}</td>
+            `;
+
+            fragment.appendChild(tr);
+            index++;
+        });
+
+        tbody.appendChild(fragment);
+
+    } catch (e) {
+        document.getElementById('cuerpoTablaAsistenciaDia').innerHTML = `<tr><td colspan="6" class="p-10 text-center text-red-500 italic">Error al cargar registros: ${e.message}</td></tr>`;
+    }
+};
+
+window.cambiarFechaAsistencia = (fecha) => {
+    window.cargarAsistenciaDelDia(fecha);
+};
+
+window.descargarReporteMensualExcel = () => {
+    if (!window.reporteMensualData || window.reporteMensualData.length === 0) {
+        alert("Primero genere un reporte para descargar.");
+        return;
+    }
+
+    const dataExcel = window.reporteMensualData.map(item => ({
+        "ESTUDIANTE": item.nombres,
+        "DNI": item.dni,
+        "GRADO": item.grado,
+        "SECCIÓN": item.seccion,
+        "ASISTENCIAS": item.asistencias,
+        "TARDANZAS": item.tardanzas,
+        "FALTAS": item.faltas,
+        "OBSERVACIONES": item.malComportamiento ? item.malComportamiento.join('; ') : ''
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataExcel);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte Mensual");
+    
+    worksheet['!cols'] = [{wch: 30}, {wch: 12}, {wch: 10}, {wch: 10}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 35}];
+
+    const mes = document.getElementById('mesConsulta').value || 'mes';
+    XLSX.writeFile(workbook, `Reporte_Mensual_Detallado_${mes}.xlsx`);
+};
+
+window.descargarReporteMensualPDF = () => {
+    if (!window.reporteMensualData || window.reporteMensualData.length === 0) {
+        alert("Primero genere un reporte para descargar.");
+        return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const mes = document.getElementById('mesConsulta').value;
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("REPORTE MENSUAL DE ASISTENCIA Y COMPORTAMIENTO", 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Mes seleccionado: ${mes}`, 14, 22);
+
+    const tableData = window.reporteMensualData.map(item => [
+        item.nombres,
+        item.dni || '',
+        item.grado,
+        item.seccion,
+        item.asistencias.toString(),
+        item.tardanzas.toString(),
+        item.faltas.toString(),
+        item.malComportamiento ? item.malComportamiento.join('; ') : ''
+    ]);
+
+    doc.autoTable({
+        startY: 28,
+        head: [['ESTUDIANTE', 'DNI', 'GRADO', 'SECCIÓN', 'ASIST.', 'TARD.', 'FALTAS', 'OBSERVACIONES DE COMPORTAMIENTO']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [21, 128, 61] }
+    });
+
+    doc.save(`Reporte_Mensual_${mes}.pdf`);
+};
 // --- 4. EXPORTACIÓN PDF ---
 window.generarReportePDF = async () => {
     const { jsPDF } = window.jspdf;
@@ -1195,19 +1593,32 @@ window.justificarFalta = async (dni, nombre) => {
 };
 
 // NUEVA FUNCIÓN PARA TU BOT PROPIO (Node.js)
-window.enviarNotificacionUltraMsg = async (telefono, mensaje) => {
+window.enviarNotificacionUltraMsg = async (telefono, nombre, estado, mensajePersonalizado) => {
     try {
-        await fetch(ULTRAMSG_CONFIG.baseUrl, {
+        // Aseguramos que el mensaje enviado incluya el nombre o el texto necesario
+        const mensajeFinal = mensajePersonalizado || `Hola, ${nombre}. Su estado de asistencia ha sido actualizado.`;
+
+        const response = await fetch(NUEVA_API_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                token: ULTRAMSG_CONFIG.token,
-                to: `51${telefono}`,
-                body: mensaje
+            // Dependiendo de si tu servidor espera JSON o formulario (x-www-form-urlencoded)
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                phone: telefono,
+                message: mensajeFinal
             })
         });
-        console.log("✅ UltraMsg enviado");
-    } catch (e) { console.error("❌ Error UltraMsg", e); }
+
+        // Verificamos si la respuesta es correcta
+        if (!response.ok) {
+            throw new Error(`Error en el servidor HTTP: ${response.status}`);
+        }
+
+        console.log("✅ Mensaje enviado correctamente mediante la nueva API.");
+    } catch (e) {
+        console.error("❌ Error al enviar mensaje mediante la nueva API:", e);
+    }
 };
 // --- NUEVA FUNCIÓN: Ajuste Dinámico de Texto ---
 window.ajustarTextoDinámico = (elementoId) => {
