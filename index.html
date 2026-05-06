@@ -225,12 +225,12 @@
         </section>
 
         <section id="sec-reportes" class="hidden section-transition">
+            <!-- Filtros -->
             <div class="mb-6 flex flex-wrap items-center gap-4 p-4 bg-white rounded-xl border border-green-200 shadow-sm">
                 <div class="flex flex-col">
                     <label for="mesConsulta" class="text-xs font-bold text-green-800 uppercase mb-1">Seleccionar Mes:</label>
                     <input type="month" id="mesConsulta" class="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-green-600 text-sm">
                 </div>
-
                 <div class="flex flex-col">
                     <label for="filtroGrado" class="text-xs font-bold text-green-800 uppercase mb-1">Grado:</label>
                     <select id="filtroGrado" class="border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600">
@@ -242,7 +242,6 @@
                         <option value="5">5to Grado</option>
                     </select>
                 </div>
-
                 <div class="flex flex-col">
                     <label for="filtroSeccion" class="text-xs font-bold text-green-800 uppercase mb-1">Sección:</label>
                     <select id="filtroSeccion" class="border border-slate-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600">
@@ -254,38 +253,43 @@
                         <option value="E">Sección E</option>
                     </select>
                 </div>
-
                 <div class="flex items-end mt-4">
                     <button onclick="window.generarReporteDiarioGeneral()" class="bg-malingas-green text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase hover:bg-green-800 transition shadow">
-                        Generar Reporte
+                        📋 Generar Reporte
                     </button>
                 </div>
             </div>
-            
-            <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
-                <div class="flex flex-col md:flex-row justify-between items-center mb-6 border-b pb-4 gap-4">
-                    <h2 class="text-xl font-black text-slate-700 uppercase">Reporte de Asistencia Mensual</h2>
+
+            <!-- Leyenda -->
+            <div class="mb-4 flex flex-wrap gap-3 items-center">
+                <span class="flex items-center gap-1 text-xs font-bold"><span class="inline-block w-6 h-6 rounded bg-green-500 text-white text-center leading-6 text-[10px]">A</span> Asistió</span>
+                <span class="flex items-center gap-1 text-xs font-bold"><span class="inline-block w-6 h-6 rounded bg-yellow-400 text-white text-center leading-6 text-[10px]">T</span> Tardanza</span>
+                <span class="flex items-center gap-1 text-xs font-bold"><span class="inline-block w-6 h-6 rounded bg-red-500 text-white text-center leading-6 text-[10px]">F</span> Falta</span>
+                <span class="flex items-center gap-1 text-xs font-bold"><span class="inline-block w-6 h-6 rounded bg-blue-500 text-white text-center leading-6 text-[10px]">J</span> Justificado</span>
+                <span class="flex items-center gap-1 text-xs font-bold"><span class="inline-block w-6 h-6 rounded bg-orange-500 text-white text-center leading-6 text-[10px]">!</span> Incidencia</span>
+            </div>
+
+            <!-- Contenedor del reporte mensual tipo grilla -->
+            <div id="reporteMensualContainer" class="bg-white rounded-2xl shadow-xl border border-slate-100">
+                <div class="flex flex-col md:flex-row justify-between items-center p-4 border-b gap-4">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-700 uppercase">Registro de Asistencia Mensual</h2>
+                        <p id="reporteSubtitulo" class="text-xs text-slate-400 font-semibold mt-1"></p>
+                    </div>
                     <div class="flex gap-2">
                         <button onclick="window.descargarReporteMensualExcel()" class="bg-blue-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-blue-700 transition flex items-center gap-2 text-xs font-bold uppercase"><span>📊</span> Excel</button>
                         <button onclick="window.descargarReporteMensualPDF()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-emerald-700 transition flex items-center gap-2 text-xs font-bold uppercase"><span>📄</span> PDF</button>
                     </div>
                 </div>
-                
-                <div class="overflow-x-auto bg-white rounded-xl max-h-[500px] custom-scroll">
-                    <table class="w-full text-left border-collapse">
-                        <thead class="sticky top-0 bg-green-50 text-green-700 text-[11px] font-black uppercase border-b-2 border-green-100 z-10">
+
+                <div class="overflow-x-auto custom-scroll" style="max-height: 600px;">
+                    <table id="tablaReporteMensual" class="border-collapse text-[11px]" style="min-width: max-content;">
+                        <thead id="theadReporteMensual" class="sticky top-0 z-20 bg-green-700 text-white font-black uppercase"></thead>
+                        <tbody id="tablaReporteGeneral" class="divide-y divide-slate-100">
                             <tr>
-                                <th class="p-4">Estudiante</th>
-                                <th class="p-4 text-center">DNI</th>
-                                <th class="p-4 text-center">Grado</th>
-                                <th class="p-4 text-center">Sección</th>
-                                <th class="p-4 text-center">Asistencias</th>
-                                <th class="p-4 text-center">Faltas / Tardanzas</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tablaReporteGeneral" class="text-slate-600 text-sm divide-y divide-slate-100">
-                            <tr>
-                                <td colspan="6" class="p-10 text-center text-slate-400 italic">Selecciona un mes y haz clic en "Generar Reporte" para visualizar los datos.</td>
+                                <td colspan="10" class="p-10 text-center text-slate-400 italic text-sm">
+                                    Selecciona un mes y haz clic en "Generar Reporte" para visualizar los datos.
+                                </td>
                             </tr>
                         </tbody>
                     </table>

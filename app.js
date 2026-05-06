@@ -599,167 +599,368 @@ window.imprimirCarnet = async (dni) => {
         alert("Error al generar impresión del carnet");
     }
 };
-// --- NUEVO MÓDULO DE REPORTE DIARIO GENERAL ---
+// ═══════════════════════════════════════════════════════
+// MÓDULO DE REPORTE MENSUAL — GRILLA DÍA A DÍA v2
+// ═══════════════════════════════════════════════════════
+
+const DIAS_SEMANA_CORTO = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+const MESES_ES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
+                  'JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+
+// Tipos de incidencia: clave en el registro → etiqueta corta para mostrar
+const TIPOS_INCIDENCIA = [
+    { campo: 'alertaConducta',  emoji: '⚠️', label: 'Conducta'   },
+    { campo: 'alertaVestimenta',emoji: '👔', label: 'Vestimenta' },
+    { campo: 'alertaCorte',     emoji: '✂️', label: 'Corte'      },
+    { campo: 'alertaSalud',     emoji: '🚑', label: 'Salud'      },
+];
+
+/** Devuelve info de celda para un registro de un día */
+function getEstadoCelda(reg) {
+    if (!reg) return { letra:'F', bg:'#ef4444', color:'#fff', titulo:'Sin registro', tieneIncidencia:false, detalleInc:[] };
+
+    const estado = (reg.estado || '').toLowerCase();
+    let letra, bg, titulo;
+
+    if (estado.includes('falta justificada'))    { letra='J'; bg='#6366f1'; titulo=reg.estado; }
+    else if (estado.includes('tardanza justificada')) { letra='J'; bg='#3b82f6'; titulo=reg.estado; }
+    else if (estado.includes('tardanza'))        { letra='T'; bg='#f59e0b'; titulo=(reg.estado||'Tardanza')+(reg.hora?' ('+reg.hora+')':''); }
+    else if (estado.includes('falta'))           { letra='F'; bg='#ef4444'; titulo=reg.estado; }
+    else if (estado !== '')                      { letra='A'; bg='#22c55e'; titulo='Asistió'+(reg.hora?' ('+reg.hora+')':''); }
+    else                                         { letra='F'; bg='#ef4444'; titulo='Falta'; }
+
+    const detalleInc = TIPOS_INCIDENCIA
+        .filter(t => reg[t.campo])
+        .map(t => ({ emoji: t.emoji, label: t.label, valor: reg[t.campo] }));
+
+    return { letra, bg, color:'#fff', titulo, tieneIncidencia: detalleInc.length > 0, detalleInc };
+}
+
 window.generarReporteDiarioGeneral = async () => {
-    const mes = document.getElementById('mesConsulta')?.value; // Formato: "2025-03"
-    const filtroGrado = document.getElementById('filtroGrado')?.value || "";
-    const filtroSeccion = document.getElementById('filtroSeccion')?.value || "";
-    const tbody = document.getElementById('tablaReporteGeneral');
+    const mes          = document.getElementById('mesConsulta')?.value;
+    const filtroGrado  = document.getElementById('filtroGrado')?.value  || "";
+    const filtroSec    = document.getElementById('filtroSeccion')?.value || "";
+    const tbody        = document.getElementById('tablaReporteGeneral');
+    const thead        = document.getElementById('theadReporteMensual');
 
-    if (!mes) {
-        alert("Por favor selecciona un mes antes de generar el reporte.");
-        return;
-    }
-    if (!tbody) {
-        alert("El contenedor de la tabla de reporte no existe en la vista actual.");
-        return;
-    }
+    if (!mes) { alert("Selecciona un mes primero."); return; }
 
-    tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-slate-400 italic">
-        ⏳ Cargando reporte mensual de ${mes}, por favor espere...
-    </td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="p-10 text-center text-slate-400 italic">⏳ Cargando reporte de ${mes}…</td></tr>`;
+    if (thead) thead.innerHTML = '';
 
     try {
-        // 1. Obtener todos los alumnos y aplicar filtros de grado/sección
+        const [year, month] = mes.split('-').map(Number);
+        const diasEnMes = new Date(year, month, 0).getDate();
+
+        // ── Fechas del mes ──────────────────────────────────
+        const fechas = [];
+        for (let d = 1; d <= diasEnMes; d++) {
+            const fecha = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            fechas.push({ fecha, dia: d, diaSemana: new Date(year, month-1, d).getDay() });
+        }
+
+        // ── Cargar alumnos ──────────────────────────────────
         const snapAlumnos = await getDocs(collection(db, "alumnos"));
         const alumnos = {};
-
         snapAlumnos.forEach(docAlu => {
-            const data = docAlu.data();
-            const grado = String(data.grado || '').trim();
-            const seccion = String(data.seccion || '').trim().toUpperCase();
-
-            // Aplicar filtros opcionales
-            if (filtroGrado && grado !== filtroGrado) return;
-            if (filtroSeccion && seccion !== filtroSeccion.toUpperCase()) return;
-
+            const d = docAlu.data();
+            const gr  = String(d.grado   || '').trim();
+            const sec = String(d.seccion || '').trim().toUpperCase();
+            if (filtroGrado && gr  !== filtroGrado)              return;
+            if (filtroSec   && sec !== filtroSec.toUpperCase())  return;
             alumnos[docAlu.id] = {
-                ...data,
-                dni: docAlu.id,
-                asistencias: 0,
-                tardanzas: 0,
-                faltas: 0,
-                malComportamiento: []
+                ...d, dni: docAlu.id,
+                diasReg: {},       // fecha → datos del registro
+                listadoInc: [],    // [{ fecha, diaSemana, emoji, label, valor }]
+                asistencias: 0, tardanzas: 0, faltas: 0, justificados: 0, incidencias: 0
             };
         });
 
-        // 2. Generar lista de todas las fechas del mes seleccionado
-        const [year, month] = mes.split('-').map(Number);
-        const diasEnMes = new Date(year, month, 0).getDate();
-        const fechas = [];
-        for (let d = 1; d <= diasEnMes; d++) {
-            const fecha = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-            fechas.push(fecha);
-        }
-
-        // 3. Consultar asistencia de cada día del mes en lotes (evitar sobrecarga)
+        // ── Cargar asistencia día a día ─────────────────────
         const LOTE = 7;
         for (let i = 0; i < fechas.length; i += LOTE) {
             const lote = fechas.slice(i, i + LOTE);
             const snaps = await Promise.all(
-                lote.map(fecha => getDocs(collection(db, "asistencia", fecha, "registros")))
+                lote.map(f => getDocs(collection(db, "asistencia", f.fecha, "registros")))
             );
-
-            snaps.forEach(snap => {
+            snaps.forEach((snap, si) => {
+                const fInfo = lote[si];
                 snap.forEach(docReg => {
                     const dni = docReg.id;
-                    if (!alumnos[dni]) return; // No está en el filtro actual
-
+                    if (!alumnos[dni]) return;
                     const data = docReg.data();
-                    const estado = (data.estado || '').toLowerCase();
+                    alumnos[dni].diasReg[fInfo.fecha] = data;
 
-                    // Clasificar estado del día
-                    if (estado.includes('tardanza')) {
-                        alumnos[dni].tardanzas++;
-                        alumnos[dni].asistencias++;
-                    } else if (estado.includes('falta')) {
-                        alumnos[dni].faltas++;
-                    } else if (estado.includes('puntual') || estado.includes('asistió') || estado !== '') {
-                        alumnos[dni].asistencias++;
-                    } else {
-                        alumnos[dni].faltas++;
-                    }
+                    const est = (data.estado || '').toLowerCase();
+                    if      (est.includes('justificad'))  alumnos[dni].justificados++;
+                    if      (est.includes('tardanza'))    { alumnos[dni].tardanzas++; alumnos[dni].asistencias++; }
+                    else if (est.includes('falta') && !est.includes('justificad')) alumnos[dni].faltas++;
+                    else if (est !== '')                  alumnos[dni].asistencias++;
+                    else                                  alumnos[dni].faltas++;
 
-                    // Registrar incidencias de comportamiento
-                    const incidencias = [
-                        data.alertaSalud || "",
-                        data.alertaConducta || "",
-                        data.alertaCorte || "",
-                        data.alertaVestimenta || ""
-                    ].filter(x => x !== "");
-
-                    if (incidencias.length > 0) {
-                        alumnos[dni].malComportamiento.push(...incidencias);
-                    }
+                    // Registrar incidencias con detalle
+                    TIPOS_INCIDENCIA.forEach(t => {
+                        if (data[t.campo]) {
+                            alumnos[dni].incidencias++;
+                            alumnos[dni].listadoInc.push({
+                                fecha:     fInfo.fecha,
+                                dia:       fInfo.dia,
+                                diaSemana: fInfo.diaSemana,
+                                emoji:     t.emoji,
+                                label:     t.label,
+                                valor:     data[t.campo]
+                            });
+                        }
+                    });
                 });
             });
         }
 
-        // 4. Ordenar lista: por grado, sección y nombre
+        // ── Ordenar ─────────────────────────────────────────
         const lista = Object.values(alumnos).sort((a, b) => {
-            const gradoComp = String(a.grado || '').localeCompare(String(b.grado || ''));
-            if (gradoComp !== 0) return gradoComp;
-            const secComp = String(a.seccion || '').localeCompare(String(b.seccion || ''));
-            if (secComp !== 0) return secComp;
-            return (a.nombres || '').localeCompare(b.nombres || '');
+            const gc = String(a.grado||'').localeCompare(String(b.grado||''));
+            if (gc) return gc;
+            const sc = String(a.seccion||'').localeCompare(String(b.seccion||''));
+            if (sc) return sc;
+            return (a.nombres||'').localeCompare(b.nombres||'');
         });
 
-        // 5. Guardar datos para la descarga Excel/PDF
-        window.reporteMensualData = lista;
-
-        // 6. Renderizar tabla
-        tbody.innerHTML = '';
+        window.reporteMensualData   = lista;
+        window.reporteMensualFechas = fechas;
+        window.reporteMensualMes    = mes;
 
         if (lista.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-slate-400 italic">
-                No hay alumnos registrados con los filtros seleccionados.
-            </td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="10" class="p-10 text-center text-slate-400 italic">No hay alumnos con los filtros seleccionados.</td></tr>`;
             return;
         }
 
+        // ── Subtítulo ───────────────────────────────────────
+        const mesLabel = MESES_ES[month - 1];
+        const sub = document.getElementById('reporteSubtitulo');
+        if (sub) {
+            const gL = filtroGrado ? `${filtroGrado}° Grado` : 'Todos los Grados';
+            const sL = filtroSec   ? `Sección ${filtroSec}`  : 'Todas las Secciones';
+            sub.textContent = `Año: ${year} | ${gL} | ${sL} | Mes: ${mesLabel} | ${lista.length} estudiantes | ${diasEnMes} días`;
+        }
+
+        // ── ENCABEZADO ──────────────────────────────────────
+        // Calcular número de columnas fijas (N°, Nombre, DNI, Sexo) = 4
+        const colsFijas = 4;
+        const colsTotal = colsFijas + diasEnMes + 5; // +5: A, T, F, J, Inc
+
+        if (thead) {
+            let thHTML = `<tr>
+                <th class="sticky left-0 z-30 bg-green-800 px-1 py-2 text-center border border-green-600 text-[10px]" style="min-width:30px">N°</th>
+                <th class="sticky left-[30px] z-30 bg-green-800 px-2 py-2 text-left border border-green-600 text-[10px]" style="min-width:210px">APELLIDOS Y NOMBRES</th>
+                <th class="bg-green-800 px-1 py-2 text-center border border-green-600 text-[10px]" style="min-width:75px">DNI</th>
+                <th class="bg-green-800 px-1 py-2 text-center border border-green-600 text-[10px]" style="min-width:55px">SEXO</th>`;
+
+            fechas.forEach(f => {
+                const bgDia = f.diaSemana === 0 ? '#7f1d1d'
+                            : f.diaSemana === 6 ? '#14532d'
+                            : '#15803d';
+                thHTML += `<th style="min-width:26px;max-width:26px;background:${bgDia};border:1px solid #166534;padding:3px 1px;text-align:center;vertical-align:bottom;">
+                    <div style="font-size:8px;font-weight:900;color:#fff;line-height:1.1;">${DIAS_SEMANA_CORTO[f.diaSemana]}</div>
+                    <div style="font-size:10px;font-weight:900;color:#fff;line-height:1.2;">${f.dia}</div>
+                </th>`;
+            });
+
+            // Resumen col headers
+            const resumenCols = [
+                { label:'ASIST.',  bg:'#15803d', title:'Total días asistidos (incluye tardanzas)' },
+                { label:'TARD.',   bg:'#d97706', title:'Total tardanzas' },
+                { label:'FALTAS',  bg:'#b91c1c', title:'Total faltas' },
+                { label:'JUSTIF.', bg:'#1d4ed8', title:'Total justificados' },
+                { label:'INCID.',  bg:'#ea580c', title:'Total incidencias (conducta, vestimenta, corte, salud)' },
+            ];
+            resumenCols.forEach(rc => {
+                thHTML += `<th title="${rc.title}" style="min-width:40px;background:${rc.bg};border:1px solid rgba(255,255,255,0.2);padding:4px 2px;text-align:center;font-size:9px;font-weight:900;color:#fff;vertical-align:bottom;">${rc.label}</th>`;
+            });
+
+            thHTML += `</tr>`;
+            thead.innerHTML = thHTML;
+        }
+
+        // ── FILAS ───────────────────────────────────────────
+        tbody.innerHTML = '';
         const fragment = document.createDocumentFragment();
-        lista.forEach(alu => {
+
+        // Contadores para fila TOTALES
+        const totA = [], totT = [], totF = [];
+        fechas.forEach(() => { totA.push(0); totT.push(0); totF.push(0); });
+        let sumA=0, sumT=0, sumF=0, sumJ=0, sumInc=0;
+
+        lista.forEach((alu, idx) => {
+            // ── Fila principal ─────────────────────────────
             const tr = document.createElement('tr');
-            tr.className = "border-b hover:bg-slate-50 transition";
-            tr.innerHTML = `
-                <td class="p-4">
-                    <div class="font-bold text-slate-800 uppercase">${alu.nombres || 'S/N'}</div>
-                    <div class="text-[10px] text-blue-600 font-bold">APO: ${alu.apoderado || '---'}</div>
+            tr.style.cssText = `background:${idx%2===0?'#fff':'#f8fafc'};`;
+
+            const bgFila = idx%2===0 ? '#fff' : '#f8fafc';
+
+            let celdas = `
+                <td style="position:sticky;left:0;z-index:10;background:${bgFila};min-width:30px;padding:3px 2px;text-align:center;border:1px solid #e2e8f0;font-size:11px;font-weight:700;color:#64748b;">${idx+1}</td>
+                <td style="position:sticky;left:30px;z-index:10;background:${bgFila};min-width:210px;padding:3px 6px;border:1px solid #e2e8f0;">
+                    <div style="font-size:11px;font-weight:800;color:#1e293b;text-transform:uppercase;line-height:1.2;">${alu.nombres||'S/N'}</div>
+                    <div style="font-size:9px;color:#94a3b8;font-family:monospace;">DNI: ${alu.dni}</div>
                 </td>
-                <td class="p-4 text-center font-mono text-xs text-slate-500">${alu.dni || '---'}</td>
-                <td class="p-4 text-center">
-                    <span class="bg-slate-100 text-slate-700 px-2 py-1 rounded-md text-xs font-black">${alu.grado || '-'}°</span>
+                <td style="padding:3px 2px;text-align:center;border:1px solid #e2e8f0;font-size:10px;font-family:monospace;color:#64748b;">${alu.dni}</td>
+                <td style="padding:3px 2px;text-align:center;border:1px solid #e2e8f0;font-size:10px;font-weight:700;color:#475569;">${alu.sexo||'—'}</td>`;
+
+            fechas.forEach((f, fi) => {
+                const reg = alu.diasReg[f.fecha];
+                const esFinSemana = f.diaSemana === 0 || f.diaSemana === 6;
+
+                if (esFinSemana) {
+                    celdas += `<td style="background:#e2e8f0;min-width:26px;max-width:26px;border:1px solid #cbd5e1;"></td>`;
+                } else {
+                    const c = getEstadoCelda(reg);
+
+                    // Acumular totales por columna-día
+                    if (c.letra==='A') totA[fi]++;
+                    if (c.letra==='T') totT[fi]++;
+                    if (c.letra==='F') totF[fi]++;
+
+                    const incBorder = c.tieneIncidencia ? `box-shadow:inset 0 0 0 2px #f97316;` : '';
+                    const incDot    = c.tieneIncidencia
+                        ? `<div style="font-size:7px;color:#f97316;font-weight:900;line-height:1;margin-top:1px;">▲</div>`
+                        : '';
+                    const tituloFull = c.titulo + (c.detalleInc.length ? ' │ ' + c.detalleInc.map(i=>i.label).join(', ') : '');
+
+                    celdas += `<td title="${tituloFull}" style="min-width:26px;max-width:26px;padding:2px 1px;text-align:center;border:1px solid #e2e8f0;vertical-align:middle;">
+                        <div style="display:inline-flex;flex-direction:column;align-items:center;">
+                            <span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:${c.bg};color:#fff;font-size:10px;font-weight:900;line-height:20px;text-align:center;${incBorder}">${c.letra}</span>
+                            ${incDot}
+                        </div>
+                    </td>`;
+                }
+            });
+
+            // ── Columnas resumen ───────────────────────────
+            sumA   += alu.asistencias;
+            sumT   += alu.tardanzas;
+            sumF   += alu.faltas;
+            sumJ   += alu.justificados;
+            sumInc += alu.incidencias;
+
+            celdas += `
+                <td style="padding:3px 2px;text-align:center;border:1px solid #e2e8f0;">
+                    <span style="display:inline-block;background:#22c55e;color:#fff;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:900;min-width:22px;text-align:center;">${alu.asistencias}</span>
                 </td>
-                <td class="p-4 text-center">
-                    <span class="bg-slate-100 text-slate-700 px-2 py-1 rounded-md text-xs font-black">${alu.seccion || '-'}</span>
+                <td style="padding:3px 2px;text-align:center;border:1px solid #e2e8f0;">
+                    <span style="display:inline-block;background:#f59e0b;color:#fff;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:900;min-width:22px;text-align:center;">${alu.tardanzas}</span>
                 </td>
-                <td class="p-4 text-center">
-                    <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-black">
-                        ${alu.asistencias} días
-                    </span>
+                <td style="padding:3px 2px;text-align:center;border:1px solid #e2e8f0;">
+                    <span style="display:inline-block;background:#ef4444;color:#fff;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:900;min-width:22px;text-align:center;">${alu.faltas}</span>
                 </td>
-                <td class="p-4 text-center">
-                    <span class="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-black mr-1">
-                        ${alu.faltas}F
-                    </span>
-                    <span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-xs font-black">
-                        ${alu.tardanzas}T
-                    </span>
-                    ${alu.malComportamiento.length > 0 ? `
-                    <div class="text-[9px] text-red-500 font-bold mt-1 uppercase">
-                        ⚠️ ${alu.malComportamiento.length} incidencia(s)
-                    </div>` : ''}
+                <td style="padding:3px 2px;text-align:center;border:1px solid #e2e8f0;">
+                    <span style="display:inline-block;background:#3b82f6;color:#fff;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:900;min-width:22px;text-align:center;">${alu.justificados}</span>
                 </td>
-            `;
+                <td style="padding:3px 2px;text-align:center;border:1px solid #e2e8f0;">
+                    <span style="display:inline-block;background:${alu.incidencias>0?'#ea580c':'#e2e8f0'};color:${alu.incidencias>0?'#fff':'#94a3b8'};padding:1px 6px;border-radius:4px;font-size:11px;font-weight:900;min-width:22px;text-align:center;">${alu.incidencias}</span>
+                </td>`;
+
+            tr.innerHTML = celdas;
             fragment.appendChild(tr);
+
+            // ── Fila de incidencias detalladas ─────────────
+            if (alu.listadoInc.length > 0) {
+                const trInc = document.createElement('tr');
+                trInc.style.cssText = `background:#fff7ed;`;
+
+                // Agrupar incidencias: fecha → lista
+                const incPorDia = {};
+                alu.listadoInc.forEach(inc => {
+                    if (!incPorDia[inc.fecha]) incPorDia[inc.fecha] = [];
+                    incPorDia[inc.fecha].push(inc);
+                });
+
+                // Columnas fijas (N° y nombre en la fila de incidencias)
+                let incCeldas = `
+                    <td colspan="2" style="position:sticky;left:0;z-index:10;background:#fff7ed;padding:3px 6px;border:1px solid #fed7aa;border-left:3px solid #f97316;">
+                        <span style="font-size:9px;font-weight:900;color:#ea580c;text-transform:uppercase;">⚠ INCIDENCIAS — ${alu.nombres}</span>
+                    </td>
+                    <td style="background:#fff7ed;border:1px solid #fed7aa;"></td>
+                    <td style="background:#fff7ed;border:1px solid #fed7aa;"></td>`;
+
+                // Celdas por día
+                fechas.forEach(f => {
+                    const incs = incPorDia[f.fecha];
+                    if (!incs || incs.length === 0) {
+                        incCeldas += `<td style="background:#fff7ed;border:1px solid #fed7aa;min-width:26px;max-width:26px;"></td>`;
+                    } else {
+                        const tags = incs.map(i =>
+                            `<span title="${i.valor}" style="display:inline-block;background:#ea580c;color:#fff;border-radius:3px;padding:0 3px;font-size:8px;font-weight:900;line-height:14px;margin:1px;">${i.emoji}${i.label}</span>`
+                        ).join('');
+                        incCeldas += `<td style="background:#fff7ed;border:1px solid #fed7aa;min-width:26px;max-width:26px;padding:2px;text-align:center;vertical-align:middle;">${tags}</td>`;
+                    }
+                });
+
+                // Resumen vacío (la incidencia ya está contada en la fila principal)
+                incCeldas += `<td style="background:#fff7ed;border:1px solid #fed7aa;" colspan="5">
+                    <div style="padding:2px 6px;">
+                        ${alu.listadoInc.map(i =>
+                            `<span style="font-size:9px;color:#7c2d12;font-weight:700;">${i.emoji} <b>${i.label}</b> (día ${i.dia}): ${i.valor}</span><br>`
+                        ).join('')}
+                    </div>
+                </td>`;
+
+                trInc.innerHTML = incCeldas;
+                fragment.appendChild(trInc);
+            }
         });
+
+        // ── FILA DE TOTALES ─────────────────────────────────
+        const trTot = document.createElement('tr');
+        trTot.style.cssText = `background:#f0fdf4;font-weight:900;border-top:3px solid #15803d;`;
+
+        let totCeldas = `
+            <td colspan="2" style="position:sticky;left:0;z-index:10;background:#dcfce7;padding:4px 8px;border:1px solid #86efac;font-size:11px;font-weight:900;color:#166534;text-transform:uppercase;">
+                TOTALES GENERALES
+            </td>
+            <td style="background:#dcfce7;border:1px solid #86efac;"></td>
+            <td style="background:#dcfce7;border:1px solid #86efac;"></td>`;
+
+        fechas.forEach((f, fi) => {
+            const esFinSemana = f.diaSemana === 0 || f.diaSemana === 6;
+            if (esFinSemana) {
+                totCeldas += `<td style="background:#e2e8f0;min-width:26px;max-width:26px;border:1px solid #cbd5e1;"></td>`;
+            } else {
+                const a = totA[fi] || 0;
+                const t = totT[fi] || 0;
+                const f2 = totF[fi] || 0;
+                totCeldas += `<td style="min-width:26px;max-width:26px;padding:2px 1px;text-align:center;border:1px solid #86efac;vertical-align:top;font-size:8px;background:#f0fdf4;">
+                    ${a>0?`<div style="color:#15803d;font-weight:900;line-height:1.2;">A:${a}</div>`:''}
+                    ${t>0?`<div style="color:#d97706;font-weight:900;line-height:1.2;">T:${t}</div>`:''}
+                    ${f2>0?`<div style="color:#dc2626;font-weight:900;line-height:1.2;">F:${f2}</div>`:''}
+                </td>`;
+            }
+        });
+
+        totCeldas += `
+            <td style="padding:4px 2px;text-align:center;border:1px solid #86efac;background:#dcfce7;">
+                <span style="background:#15803d;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:900;">${sumA}</span>
+            </td>
+            <td style="padding:4px 2px;text-align:center;border:1px solid #86efac;background:#dcfce7;">
+                <span style="background:#d97706;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:900;">${sumT}</span>
+            </td>
+            <td style="padding:4px 2px;text-align:center;border:1px solid #86efac;background:#dcfce7;">
+                <span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:900;">${sumF}</span>
+            </td>
+            <td style="padding:4px 2px;text-align:center;border:1px solid #86efac;background:#dcfce7;">
+                <span style="background:#1d4ed8;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:900;">${sumJ}</span>
+            </td>
+            <td style="padding:4px 2px;text-align:center;border:1px solid #86efac;background:#dcfce7;">
+                <span style="background:${sumInc>0?'#ea580c':'#e2e8f0'};color:${sumInc>0?'#fff':'#94a3b8'};padding:2px 8px;border-radius:4px;font-size:12px;font-weight:900;">${sumInc}</span>
+            </td>`;
+
+        trTot.innerHTML = totCeldas;
+        fragment.appendChild(trTot);
+
         tbody.appendChild(fragment);
 
-    } catch (error) {
-        console.error("Error en reporte mensual:", error);
-        tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-red-500 italic">
-            Error al generar reporte: ${error.message}
-        </td></tr>`;
+    } catch (err) {
+        console.error("Error en reporte mensual:", err);
+        tbody.innerHTML = `<tr><td colspan="10" class="p-10 text-center text-red-500 italic">Error: ${err.message}</td></tr>`;
     }
 };
 
@@ -769,25 +970,102 @@ window.descargarReporteMensualExcel = () => {
         return;
     }
 
-    const dataExcel = window.reporteMensualData.map(item => ({
-        "ESTUDIANTE": item.nombres,
-        "DNI": item.dni,
-        "GRADO": item.grado,
-        "SECCIÓN": item.seccion,
-        "ASISTENCIAS": item.asistencias,
-        "TARDANZAS": item.tardanzas,
-        "FALTAS": item.faltas,
-        "OBSERVACIONES": item.malComportamiento ? item.malComportamiento.join('; ') : ''
-    }));
+    const fechas = window.reporteMensualFechas || [];
+    const DS = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+    const mes = window.reporteMensualMes || document.getElementById('mesConsulta').value || 'mes';
 
-    const worksheet = XLSX.utils.json_to_sheet(dataExcel);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte Mensual");
-    
-    worksheet['!cols'] = [{wch: 30}, {wch: 12}, {wch: 10}, {wch: 10}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 35}];
+    // ── Construir filas de datos ────────────────────────────
+    const dataExcel = window.reporteMensualData.map((item, idx) => {
+        const row = {};
+        row["N°"]                  = idx + 1;
+        row["APELLIDOS Y NOMBRES"] = item.nombres || '';
+        row["DNI"]                 = item.dni     || '';
+        row["SEXO"]                = item.sexo    || '';
 
-    const mes = document.getElementById('mesConsulta').value || 'mes';
-    XLSX.writeFile(workbook, `Reporte_Mensual_Detallado_${mes}.xlsx`);
+        fechas.forEach(f => {
+            const colKey = `${DS[f.diaSemana]} ${f.dia}`;
+            const esFinSemana = f.diaSemana === 0 || f.diaSemana === 6;
+            if (esFinSemana) { row[colKey] = ''; return; }
+            const reg = item.diasReg ? item.diasReg[f.fecha] : null;
+            if (!reg) { row[colKey] = 'F'; return; }
+            const est = (reg.estado || '').toLowerCase();
+            let letra = 'A';
+            if (est.includes('justificad'))     letra = 'J';
+            else if (est.includes('tardanza'))  letra = 'T';
+            else if (est.includes('falta'))     letra = 'F';
+            // Marcar incidencia con asterisco
+            const hasInc = reg.alertaSalud || reg.alertaConducta || reg.alertaCorte || reg.alertaVestimenta;
+            row[colKey] = hasInc ? letra + '*' : letra;
+        });
+
+        row["ASIST."]  = item.asistencias  || 0;
+        row["TARD."]   = item.tardanzas    || 0;
+        row["FALTAS"]  = item.faltas       || 0;
+        row["JUSTIF."] = item.justificados || 0;
+        row["INCID."]  = item.incidencias  || 0;
+
+        // Detalle de incidencias como texto
+        const detalle = (item.listadoInc || []).map(i =>
+            `Día ${i.dia} (${DS[i.diaSemana]}): [${i.label}] ${i.valor}`
+        ).join(' | ');
+        row["DETALLE DE INCIDENCIAS"] = detalle || '';
+
+        return row;
+    });
+
+    // ── Fila de TOTALES ─────────────────────────────────────
+    const totRow = { "N°": '', "APELLIDOS Y NOMBRES": '▶ TOTALES', "DNI": '', "SEXO": '' };
+    fechas.forEach(f => {
+        const colKey = `${DS[f.diaSemana]} ${f.dia}`;
+        const esFS = f.diaSemana === 0 || f.diaSemana === 6;
+        if (esFS) { totRow[colKey] = ''; return; }
+        let cA=0, cT=0, cF=0;
+        window.reporteMensualData.forEach(item => {
+            const reg = item.diasReg ? item.diasReg[f.fecha] : null;
+            if (!reg) { cF++; return; }
+            const est = (reg.estado || '').toLowerCase();
+            if      (est.includes('tardanza')) cT++;
+            else if (est.includes('falta'))    cF++;
+            else if (est !== '')               cA++;
+            else                               cF++;
+        });
+        totRow[colKey] = `A:${cA} T:${cT} F:${cF}`;
+    });
+    const sumA   = window.reporteMensualData.reduce((s,i) => s+(i.asistencias||0), 0);
+    const sumT   = window.reporteMensualData.reduce((s,i) => s+(i.tardanzas||0),   0);
+    const sumF   = window.reporteMensualData.reduce((s,i) => s+(i.faltas||0),       0);
+    const sumJ   = window.reporteMensualData.reduce((s,i) => s+(i.justificados||0), 0);
+    const sumInc = window.reporteMensualData.reduce((s,i) => s+(i.incidencias||0),  0);
+    totRow["ASIST."]  = sumA;
+    totRow["TARD."]   = sumT;
+    totRow["FALTAS"]  = sumF;
+    totRow["JUSTIF."] = sumJ;
+    totRow["INCID."]  = sumInc;
+    totRow["DETALLE DE INCIDENCIAS"] = '';
+    dataExcel.push(totRow);
+
+    // ── Hoja 2: Detalle completo de incidencias ─────────────
+    const incData = [];
+    window.reporteMensualData.forEach(item => {
+        (item.listadoInc || []).forEach(inc => {
+            incData.push({
+                "APELLIDOS Y NOMBRES": item.nombres || '',
+                "DNI":                 item.dni     || '',
+                "FECHA":               inc.fecha,
+                "DÍA":                 inc.dia,
+                "DÍA SEMANA":          ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][inc.diaSemana],
+                "TIPO INCIDENCIA":     inc.label,
+                "DESCRIPCIÓN":         inc.valor
+            });
+        });
+    });
+
+    const ws1 = XLSX.utils.json_to_sheet(dataExcel);
+    const ws2 = XLSX.utils.json_to_sheet(incData.length > 0 ? incData : [{ "MENSAJE": "No hubo incidencias en este período." }]);
+    const wb  = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws1, "Asistencia Mensual");
+    XLSX.utils.book_append_sheet(wb, ws2, "Detalle Incidencias");
+    XLSX.writeFile(wb, `Asistencia_Mensual_${mes}.xlsx`);
 };
 
 window.descargarReporteMensualPDF = () => {
@@ -797,35 +1075,147 @@ window.descargarReporteMensualPDF = () => {
     }
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    const mes = document.getElementById('mesConsulta').value;
+    const docPDF = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' });
+    const mes    = window.reporteMensualMes || document.getElementById('mesConsulta').value;
+    const fechas = window.reporteMensualFechas || [];
+    const DS     = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+    const ME     = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
+                    'JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+    const [year, month] = mes.split('-').map(Number);
 
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("REPORTE MENSUAL DE ASISTENCIA Y COMPORTAMIENTO", 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Mes seleccionado: ${mes}`, 14, 22);
+    // ── Encabezado institucional ────────────────────────────
+    docPDF.setFont("Helvetica", "bold");
+    docPDF.setFontSize(13);
+    docPDF.setTextColor(21, 128, 61);
+    docPDF.text("I.E. HORACIO ZEBALLOS GÁMEZ — MALINGAS", 14, 12);
+    docPDF.setFontSize(9);
+    docPDF.setTextColor(80);
+    docPDF.text(`REGISTRO DE ASISTENCIA MENSUAL | ${ME[month-1]} ${year}`, 14, 18);
+    docPDF.text(`(*) = día con incidencia  |  A=Asistió  T=Tardanza  F=Falta  J=Justificado`, 14, 23);
 
-    const tableData = window.reporteMensualData.map(item => [
-        item.nombres,
-        item.dni || '',
-        item.grado,
-        item.seccion,
-        item.asistencias.toString(),
-        item.tardanzas.toString(),
-        item.faltas.toString(),
-        item.malComportamiento ? item.malComportamiento.join('; ') : ''
-    ]);
+    // ── Columnas encabezado ─────────────────────────────────
+    const headCols = ["N°", "APELLIDOS Y NOMBRES", "DNI"];
+    fechas.forEach(f => headCols.push(`${DS[f.diaSemana]}\n${f.dia}`));
+    headCols.push("A", "T", "F", "J", "INC.");
 
-    doc.autoTable({
-        startY: 28,
-        head: [['ESTUDIANTE', 'DNI', 'GRADO', 'SECCIÓN', 'ASIST.', 'TARD.', 'FALTAS', 'OBSERVACIONES DE COMPORTAMIENTO']],
-        body: tableData,
-        theme: 'striped',
-        headStyles: { fillColor: [21, 128, 61] }
+    // ── Filas de datos ──────────────────────────────────────
+    const tableData = window.reporteMensualData.map((item, idx) => {
+        const row = [idx + 1, item.nombres || '', item.dni || ''];
+        fechas.forEach(f => {
+            const esFS = f.diaSemana === 0 || f.diaSemana === 6;
+            if (esFS) { row.push(''); return; }
+            const reg = item.diasReg ? item.diasReg[f.fecha] : null;
+            if (!reg) { row.push('F'); return; }
+            const est = (reg.estado || '').toLowerCase();
+            let letra = 'A';
+            if      (est.includes('justificad'))    letra = 'J';
+            else if (est.includes('tardanza'))       letra = 'T';
+            else if (est.includes('falta'))          letra = 'F';
+            const hasInc = reg.alertaSalud || reg.alertaConducta || reg.alertaCorte || reg.alertaVestimenta;
+            row.push(hasInc ? letra + '*' : letra);
+        });
+        row.push(item.asistencias||0, item.tardanzas||0, item.faltas||0, item.justificados||0, item.incidencias||0);
+        return row;
     });
 
-    doc.save(`Reporte_Mensual_${mes}.pdf`);
+    // ── Fila totales ────────────────────────────────────────
+    const totRow = ['', 'TOTALES GENERALES', ''];
+    fechas.forEach(f => {
+        const esFS = f.diaSemana === 0 || f.diaSemana === 6;
+        if (esFS) { totRow.push(''); return; }
+        let cA=0,cT=0,cF=0;
+        window.reporteMensualData.forEach(item => {
+            const reg = item.diasReg ? item.diasReg[f.fecha] : null;
+            if (!reg) { cF++; return; }
+            const est = (reg.estado||'').toLowerCase();
+            if      (est.includes('tardanza')) cT++;
+            else if (est.includes('falta'))    cF++;
+            else if (est !== '')               cA++;
+            else                               cF++;
+        });
+        totRow.push(`${cA}/${cT}/${cF}`);
+    });
+    const sumA   = window.reporteMensualData.reduce((s,i)=>s+(i.asistencias||0),0);
+    const sumT   = window.reporteMensualData.reduce((s,i)=>s+(i.tardanzas||0),0);
+    const sumF   = window.reporteMensualData.reduce((s,i)=>s+(i.faltas||0),0);
+    const sumJ   = window.reporteMensualData.reduce((s,i)=>s+(i.justificados||0),0);
+    const sumInc = window.reporteMensualData.reduce((s,i)=>s+(i.incidencias||0),0);
+    totRow.push(sumA, sumT, sumF, sumJ, sumInc);
+    tableData.push(totRow);
+
+    // ── Tabla principal ─────────────────────────────────────
+    docPDF.autoTable({
+        startY: 27,
+        head: [headCols],
+        body: tableData,
+        theme: 'grid',
+        styles:     { fontSize: 5.5, cellPadding: 1, halign: 'center', valign: 'middle', overflow: 'linebreak' },
+        headStyles: { fillColor: [21, 128, 61], textColor: 255, fontSize: 5.5, fontStyle: 'bold', halign: 'center' },
+        columnStyles: { 0: { cellWidth: 7 }, 1: { cellWidth: 40, halign: 'left' }, 2: { cellWidth: 17 } },
+        willDrawCell: (data) => {
+            // Colorear última fila (totales)
+            if (data.section==='body' && data.row.index===tableData.length-1) {
+                data.cell.styles.fillColor = [220, 252, 231];
+                data.cell.styles.fontStyle = 'bold';
+            }
+        },
+        didParseCell: (data) => {
+            if (data.section !== 'body') return;
+            const v = String(data.cell.raw || '');
+            if      (v==='F')  { data.cell.styles.fillColor=[254,202,202]; data.cell.styles.textColor=[185,28,28]; }
+            else if (v==='F*') { data.cell.styles.fillColor=[254,202,202]; data.cell.styles.textColor=[185,28,28]; data.cell.styles.fontStyle='bold'; }
+            else if (v==='T')  { data.cell.styles.fillColor=[254,243,199]; data.cell.styles.textColor=[146,64,14]; }
+            else if (v==='T*') { data.cell.styles.fillColor=[254,243,199]; data.cell.styles.textColor=[146,64,14]; data.cell.styles.fontStyle='bold'; }
+            else if (v==='A')  { data.cell.styles.fillColor=[220,252,231]; data.cell.styles.textColor=[21,128,61]; }
+            else if (v==='A*') { data.cell.styles.fillColor=[220,252,231]; data.cell.styles.textColor=[21,128,61]; data.cell.styles.fontStyle='bold'; }
+            else if (v==='J' || v==='J*') { data.cell.styles.fillColor=[219,234,254]; data.cell.styles.textColor=[29,78,216]; }
+        }
+    });
+
+    // ── PÁGINA 2: Detalle de Incidencias ────────────────────
+    const incList = [];
+    window.reporteMensualData.forEach(item => {
+        (item.listadoInc || []).forEach(inc => {
+            incList.push([
+                item.nombres || '',
+                item.dni || '',
+                inc.fecha,
+                `${DS[inc.diaSemana]} ${inc.dia}`,
+                inc.label,
+                inc.valor
+            ]);
+        });
+    });
+
+    if (incList.length > 0) {
+        docPDF.addPage();
+        docPDF.setFont("Helvetica", "bold");
+        docPDF.setFontSize(12);
+        docPDF.setTextColor(234, 88, 12);
+        docPDF.text("DETALLE DE INCIDENCIAS — " + ME[month-1] + ' ' + year, 14, 14);
+        docPDF.setFontSize(8);
+        docPDF.setTextColor(100);
+        docPDF.text(`Total de incidencias registradas: ${incList.length}`, 14, 20);
+
+        docPDF.autoTable({
+            startY: 24,
+            head: [['APELLIDOS Y NOMBRES', 'DNI', 'FECHA', 'DÍA', 'TIPO', 'DESCRIPCIÓN']],
+            body: incList,
+            theme: 'striped',
+            styles:     { fontSize: 8, cellPadding: 2 },
+            headStyles: { fillColor: [234, 88, 12], textColor: 255, fontStyle: 'bold' },
+            columnStyles: {
+                0: { cellWidth: 65 },
+                1: { cellWidth: 22 },
+                2: { cellWidth: 24 },
+                3: { cellWidth: 20 },
+                4: { cellWidth: 25 },
+                5: { cellWidth: 'auto' }
+            }
+        });
+    }
+
+    docPDF.save(`Asistencia_Mensual_${mes}.pdf`);
 };
 // --- 4. EXPORTACIÓN PDF ---
 window.generarReportePDF = async () => {
