@@ -884,10 +884,6 @@ window.cargarAsistenciaDelDia = async (fechaSeleccionada) => {
     }
 };
 
-window.cambiarFechaAsistencia = (fecha) => {
-    window.cargarAsistenciaDelDia(fecha);
-};
-
 window.descargarReporteMensualExcel = () => {
     if (!window.reporteMensualData || window.reporteMensualData.length === 0) {
         alert("Primero genere un reporte para descargar.");
