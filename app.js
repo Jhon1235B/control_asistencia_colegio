@@ -716,6 +716,32 @@ window.generarReporteDiarioGeneral = async () => {
             });
         }
 
+        // ── Detectar FERIADOS: días hábiles sin ningún registro ─
+        const feriadosSet = new Set();
+        fechas.forEach(f => {
+            if (f.diaSemana === 0 || f.diaSemana === 6) return; // fines de semana ya ignorados
+            const tieneRegistros = Object.values(alumnos).some(a => a.diasReg[f.fecha]);
+            if (!tieneRegistros) feriadosSet.add(f.fecha);
+        });
+
+        // ── Recalcular contadores de cada alumno excluyendo feriados ─
+        Object.values(alumnos).forEach(alu => {
+            // Resetear contadores
+            alu.asistencias = 0; alu.tardanzas = 0; alu.faltas = 0; alu.justificados = 0;
+            fechas.forEach(f => {
+                if (f.diaSemana === 0 || f.diaSemana === 6) return; // fin de semana
+                if (feriadosSet.has(f.fecha)) return;               // feriado → no cuenta
+                const data = alu.diasReg[f.fecha];
+                if (!data) { alu.faltas++; return; }                // día hábil sin registro = falta
+                const est = (data.estado || '').toLowerCase();
+                if      (est.includes('justificad'))  alu.justificados++;
+                if      (est.includes('tardanza'))    { alu.tardanzas++; alu.asistencias++; }
+                else if (est.includes('falta') && !est.includes('justificad')) alu.faltas++;
+                else if (est !== '')                  alu.asistencias++;
+                else                                  alu.faltas++;
+            });
+        });
+
         // ── Ordenar ─────────────────────────────────────────
         const lista = Object.values(alumnos).sort((a, b) => {
             const gc = String(a.grado||'').localeCompare(String(b.grado||''));
@@ -728,6 +754,7 @@ window.generarReporteDiarioGeneral = async () => {
         window.reporteMensualData   = lista;
         window.reporteMensualFechas = fechas;
         window.reporteMensualMes    = mes;
+        window.reporteMensualFeriados = feriadosSet;
 
         if (lista.length === 0) {
             tbody.innerHTML = `<tr><td colspan="10" class="p-10 text-center text-slate-400 italic">No hay alumnos con los filtros seleccionados.</td></tr>`;
@@ -756,12 +783,16 @@ window.generarReporteDiarioGeneral = async () => {
                 <th class="bg-green-800 px-1 py-2 text-center border border-green-600 text-[10px]" style="min-width:55px">SEXO</th>`;
 
             fechas.forEach(f => {
+                const esFeriado = feriadosSet.has(f.fecha);
                 const bgDia = f.diaSemana === 0 ? '#7f1d1d'
                             : f.diaSemana === 6 ? '#14532d'
+                            : esFeriado         ? '#6b21a8'   // morado = feriado
                             : '#15803d';
+                const labelExtra = esFeriado ? `<div style="font-size:7px;font-weight:900;color:#e9d5ff;line-height:1;">FER</div>` : '';
                 thHTML += `<th style="min-width:26px;max-width:26px;background:${bgDia};border:1px solid #166534;padding:3px 1px;text-align:center;vertical-align:bottom;">
                     <div style="font-size:8px;font-weight:900;color:#fff;line-height:1.1;">${DIAS_SEMANA_CORTO[f.diaSemana]}</div>
                     <div style="font-size:10px;font-weight:900;color:#fff;line-height:1.2;">${f.dia}</div>
+                    ${labelExtra}
                 </th>`;
             });
 
@@ -809,9 +840,17 @@ window.generarReporteDiarioGeneral = async () => {
             fechas.forEach((f, fi) => {
                 const reg = alu.diasReg[f.fecha];
                 const esFinSemana = f.diaSemana === 0 || f.diaSemana === 6;
+                const esFeriado   = feriadosSet.has(f.fecha);
 
                 if (esFinSemana) {
                     celdas += `<td style="background:#e2e8f0;min-width:26px;max-width:26px;border:1px solid #cbd5e1;"></td>`;
+                } else if (esFeriado) {
+                    // Día sin actividad = feriado/no laborable → NO cuenta como falta
+                    celdas += `<td title="Feriado / Día no laborable" style="min-width:26px;max-width:26px;padding:2px 1px;text-align:center;border:1px solid #e2e8f0;vertical-align:middle;">
+                        <div style="display:inline-flex;flex-direction:column;align-items:center;">
+                            <span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#7c3aed;color:#fff;font-size:7px;font-weight:900;line-height:20px;text-align:center;">FER</span>
+                        </div>
+                    </td>`;
                 } else {
                     const c = getEstadoCelda(reg);
 
@@ -922,8 +961,13 @@ window.generarReporteDiarioGeneral = async () => {
 
         fechas.forEach((f, fi) => {
             const esFinSemana = f.diaSemana === 0 || f.diaSemana === 6;
+            const esFeriado   = feriadosSet.has(f.fecha);
             if (esFinSemana) {
                 totCeldas += `<td style="background:#e2e8f0;min-width:26px;max-width:26px;border:1px solid #cbd5e1;"></td>`;
+            } else if (esFeriado) {
+                totCeldas += `<td title="Feriado" style="min-width:26px;max-width:26px;padding:2px 1px;text-align:center;border:1px solid #e2e8f0;background:#f3e8ff;">
+                    <span style="font-size:7px;font-weight:900;color:#7c3aed;">FER</span>
+                </td>`;
             } else {
                 const a = totA[fi] || 0;
                 const t = totT[fi] || 0;
@@ -986,6 +1030,8 @@ window.descargarReporteMensualExcel = () => {
             const colKey = `${DS[f.diaSemana]} ${f.dia}`;
             const esFinSemana = f.diaSemana === 0 || f.diaSemana === 6;
             if (esFinSemana) { row[colKey] = ''; return; }
+            const esFeriado = window.reporteMensualFeriados && window.reporteMensualFeriados.has(f.fecha);
+            if (esFeriado)  { row[colKey] = 'FER'; return; }
             const reg = item.diasReg ? item.diasReg[f.fecha] : null;
             if (!reg) { row[colKey] = 'F'; return; }
             const est = (reg.estado || '').toLowerCase();
