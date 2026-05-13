@@ -237,7 +237,7 @@ const iniciarControlAsistencia = (fechaManual = null) => {
 
         if (snapshot.empty) {
             contenedorAsis.innerHTML = `<div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">
-                No hay ingresos registrados para esta fecha (${hoy})...
+                No hay alumnos registrados para esta fecha (${hoy})...
             </div>`;
             return;
         }
@@ -556,7 +556,7 @@ window.imprimirCarnet = async (dni) => {
             </head>
             <body>
                 <div class="carnet">
-                    <div class="cabecera">I.E. HORACIO ZEBALLOS GÁMEZ - MALINGAS</div>
+                    <div class="cabecera">I.E. HORACIO ZEVALLOS GÁMEZ - MALINGAS</div>
                     
                     <div class="contenido">
                         <div class="logo-seccion">
@@ -1133,7 +1133,7 @@ window.descargarReporteMensualPDF = () => {
     docPDF.setFont("Helvetica", "bold");
     docPDF.setFontSize(13);
     docPDF.setTextColor(21, 128, 61);
-    docPDF.text("I.E. HORACIO ZEBALLOS GÁMEZ — MALINGAS", 14, 12);
+    docPDF.text("I.E. HORACIO ZEVALLOS GÁMEZ — MALINGAS", 14, 12);
     docPDF.setFontSize(9);
     docPDF.setTextColor(80);
     docPDF.text(`REGISTRO DE ASISTENCIA MENSUAL | ${ME[month-1]} ${year}`, 14, 18);
@@ -1328,7 +1328,7 @@ window.generarReportePDF = async () => {
         docPDF.setTextColor(21, 128, 61); 
         docPDF.setFontSize(16);
         docPDF.setFont("helvetica", "bold");
-        docPDF.text("I.E. HORACIO ZEBALLOS GÁMEZ", 14, 20);
+        docPDF.text("I.E. HORACIO ZEVALLOS GÁMEZ", 14, 20);
         
         docPDF.setFontSize(10);
         docPDF.setTextColor(100);
@@ -1438,7 +1438,7 @@ const enviarNotificacionUltraMsg = async (telefono, nombre, estado, mensajePerso
     const url = "https://api.ultramsg.com/instance169160/messages/chat";
     const token = "bkd2pujvtq9icz2w"; // El token
     
-    const mensaje = mensajePersonalizado || `*I.E. HORACIO ZEBALLOS GÁMEZ*\n\nHola, se informa que el estudiante *${nombre.toUpperCase()}* registró su ingreso como: *${estado.toUpperCase()}*.\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
+    const mensaje = mensajePersonalizado || `*I.E. HORACIO ZEVALLOS GÁMEZ*\n\nHola, se informa que el estudiante *${nombre.toUpperCase()}* registró su ingreso como: *${estado.toUpperCase()}*.\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
 
     try {
         await fetch(url, {
@@ -1537,7 +1537,7 @@ window.imprimirTodosLosCarnets = () => {
 
         contenidoCarnets += `
             <div class="carnet">
-                <div class="cabecera">I.E. HORACIO ZEBALLOS GÁMEZ - MALINGAS</div>
+                <div class="cabecera">I.E. HORACIO ZEVALLOS GÁMEZ - MALINGAS</div>
                 <div class="contenido">
                     <div class="logo-seccion"><img src="logo_colegio.jpeg" class="logo-img"></div>
                     <div class="info-estudiante">
@@ -1969,3 +1969,1090 @@ window.filtrarAlumnos = () => {
 
 // Iniciar procesos
 iniciarControlAsistencia();
+
+// =========================================================
+// ============= MÓDULO DE DOCENTES ========================
+// =========================================================
+
+let docentesTodosMemoria = [];
+let docentesFiltradosMemoria = [];
+
+// --- GUARDAR DOCENTE ---
+document.addEventListener('DOMContentLoaded', () => {
+    const docenteForm = document.getElementById('docenteForm');
+    if (docenteForm) {
+        docenteForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const dni = document.getElementById('docenteDni').value.trim();
+            const nombres = document.getElementById('docenteNombres').value.trim().toUpperCase();
+            const apellidos = document.getElementById('docenteApellidos').value.trim().toUpperCase();
+            const condicionRadio = document.querySelector('input[name="docenteCondicion"]:checked');
+            if (!condicionRadio) return alert("Selecciona la condición laboral del docente.");
+            const condicion = condicionRadio.value;
+
+            const datos = { dni, nombres, apellidos, condicion };
+            try {
+                await setDoc(doc(db, "docentes", dni), datos);
+                alert("✅ Docente guardado con éxito.");
+                docenteForm.reset();
+                document.getElementById('docenteDni').readOnly = false;
+                    document.getElementById('docenteDni').classList.remove('bg-slate-100');
+                window.generarCarnetDocente(dni);
+            } catch (err) {
+                alert("Error al guardar: " + err.message);
+            }
+        });
+    }
+
+    // Escuchar cambios en docentes (realtime)
+    onSnapshot(collection(db, "docentes"), (snap) => {
+        docentesTodosMemoria = snap.docs.map(d => d.data());
+        docentesFiltradosMemoria = [...docentesTodosMemoria];
+        renderizarTablaDocentes();
+    });
+});
+
+// --- RENDER TABLA DOCENTES ---
+function renderizarTablaDocentes() {
+    const tbody = document.getElementById('tablaDocentes');
+    const contador = document.getElementById('contadorDocentes');
+    if (!tbody) return;
+    
+    if (contador) contador.textContent = docentesFiltradosMemoria.length + ' docentes';
+    
+    if (docentesFiltradosMemoria.length === 0) {
+        // Se cambió colspan a 8 porque ahora hay más columnas
+        tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-400 italic">No hay docentes registrados.</td></tr>`;
+        return;
+    }
+    
+    tbody.innerHTML = docentesFiltradosMemoria.map(d => {
+        const badgeColor = d.condicion === 'NOMBRADO'
+            ? 'bg-green-100 text-green-700'
+            : 'bg-blue-100 text-blue-700';
+            
+        return `
+        <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+            <td class="p-3 font-mono font-bold text-xs">${d.dni}</td>
+            <td class="p-3 font-semibold text-sm">${d.apellidos}</td>
+            <td class="p-3 text-sm text-slate-600">${d.nombres}</td>
+            <td class="p-3 text-center">
+                <span class="px-2 py-1 rounded-full text-[10px] font-black ${badgeColor}">${d.condicion || '---'}</span>
+            </td>
+            <td class="p-3 text-center font-bold text-green-600 text-xs">${d.asistencias || 0}</td>
+            <td class="p-3 text-center font-bold text-amber-500 text-xs">${d.tardanzas || 0}</td>
+            <td class="p-3 text-center font-bold text-red-500 text-xs">${d.faltas || 0}</td>
+            
+            <td class="p-3 text-center">
+                <div class="flex gap-1 justify-center">
+                    <button onclick="window.generarCarnetDocente('${d.dni}')"
+                        class="bg-green-600 text-white px-2 py-1 rounded-lg text-[10px] font-bold hover:bg-green-700 transition">Carnet</button>
+                    <button onclick="window.editarDocente('${d.dni}', '${d.nombres}', '${d.apellidos}', '${d.condicion}')"
+                        class="bg-amber-500 text-white px-2 py-1 rounded-lg text-[10px] font-bold hover:bg-amber-600 transition">Editar</button>
+                    <button onclick="window.eliminarDocente('${d.dni}')"
+                        class="bg-red-500 text-white px-2 py-1 rounded-lg text-[10px] font-bold hover:bg-red-700 transition">Eliminar</button>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// --- FILTRAR DOCENTES ---
+window.filtrarDocentes = () => {
+    const texto = document.getElementById('buscadorDocentes').value.toLowerCase().trim();
+    docentesFiltradosMemoria = texto === ''
+        ? [...docentesTodosMemoria]
+        : docentesTodosMemoria.filter(d =>
+            (d.nombres && d.nombres.toLowerCase().includes(texto)) ||
+            (d.apellidos && d.apellidos.toLowerCase().includes(texto)) ||
+            (d.dni && d.dni.includes(texto))
+        );
+    renderizarTablaDocentes();
+};
+
+// --- ELIMINAR DOCENTE ---
+window.eliminarDocente = async (dni) => {
+    if (!confirm("¿Eliminar este docente?")) return;
+    await deleteDoc(doc(db, "docentes", dni));
+};
+
+// --- EDITAR DOCENTE ---
+window.editarDocente = (dni, nombres, apellidos, condicion) => {
+    // Navegar a la sección de registro
+    document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
+    document.getElementById('sec-registro-docentes').classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Rellenar el formulario con los datos actuales
+    document.getElementById('docenteDni').value = dni;
+    document.getElementById('docenteDni').readOnly = true; // No permitir cambiar DNI
+    document.getElementById('docenteDni').classList.add('bg-slate-100');
+    document.getElementById('docenteNombres').value = nombres;
+    document.getElementById('docenteApellidos').value = apellidos;
+
+    // Marcar el radio correcto
+    const radios = document.querySelectorAll('input[name="docenteCondicion"]');
+    radios.forEach(r => { r.checked = r.value === condicion; });
+};
+
+// --- GENERAR CARNET DOCENTE ---
+window.generarCarnetDocente = async (dni) => {
+    // Ir a la sección de registro donde está el contenedor del carnet
+    document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
+    document.getElementById('sec-registro-docentes').classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    const container = document.getElementById('carnetDocenteContainer');
+    if (!container) return;
+
+    try {
+        const docRef = doc(db, "docentes", dni);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) return alert("Docente no encontrado.");
+        const d = docSnap.data();
+
+        const condicionColor = d.condicion === 'NOMBRADO' ? '#15803d' : '#1d4ed8';
+        const condicionBg = d.condicion === 'NOMBRADO' ? '#dcfce7' : '#dbeafe';
+
+        container.innerHTML = `
+        <div id="carnetDocentePrint" style="
+            width: 325px;
+            height: 204px;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+            border: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        ">
+            <!-- CABECERA -->
+            <div style="background:#15803d; padding: 10px 14px; display: flex; align-items: center; gap: 10px; color: white;">
+                <img src="logo_colegio.jpeg" style="width:36px; height:36px; border-radius:6px; background:white; padding:2px; object-fit:contain; flex-shrink:0;">
+                <div style="flex:1;">
+                    <div style="font-size:9px; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">I.E. Horacio Zevallos Gámez</div>
+                    <div style="font-size:7px; opacity:0.9; text-transform:uppercase;">Malingas · Tambogrande</div>
+                </div>
+                <div style="font-size:8px; font-weight:800; background:rgba(255,255,255,0.2); padding:3px 8px; border-radius:4px; border:1px solid rgba(255,255,255,0.3); text-transform:uppercase;">
+                    Docente
+                </div>
+            </div>
+
+            <!-- CUERPO -->
+            <div style="flex:1; display:flex; padding: 12px 16px; gap: 15px; align-items: center; background: white;">
+                <!-- QR -->
+                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                    <div style="padding:4px; border:1px solid #e2e8f0; border-radius:8px; background:white;">
+                        <div id="qrDocente_${dni}" style="width:75px; height:75px;"></div>
+                    </div>
+                    <span style="font-size:6px; font-weight:700; color:#94a3b8; text-transform:uppercase;">ID Digital</span>
+                </div>
+
+                <!-- DATOS -->
+                <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
+                    <div>
+                        <label style="display:block; font-size:7px; font-weight:700; color:#64748b; margin-bottom:1px; text-transform:uppercase;">Apellidos</label>
+                        <div style="font-size:14px; font-weight:800; color:#1e293b; line-height:1.1;">${(d.apellidos||'').toUpperCase()}</div>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:7px; font-weight:700; color:#64748b; margin-bottom:1px; text-transform:uppercase;">Nombres</label>
+                        <div style="font-size:11px; font-weight:600; color:#475569; line-height:1.1;">${(d.nombres||'').toUpperCase()}</div>
+                    </div>
+                    
+                    <div style="display:flex; gap:6px; margin-top:4px; align-items:center;">
+                        <div style="font-size:9px; font-weight:700; color:#1e293b; background:#f1f5f9; padding:3px 8px; border-radius:4px; font-family:monospace;">
+                            DNI ${d.dni}
+                        </div>
+                        <div style="font-size:8px; font-weight:800; padding:3px 8px; border-radius:4px; text-transform:uppercase; background:${condicionBg}; color:${condicionColor}; border: 1px solid ${condicionColor}44;">
+                            ${d.condicion}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PIE -->
+            <div style="background:#f8fafc; border-top:1px solid #f1f5f9; padding:5px 14px; display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-size:7px; font-weight:700; color:#15803d; letter-spacing:1px; text-transform:uppercase;">Disciplina · Lealtad · Honradez</div>
+                <div style="font-size:8px; font-weight:800; color:#94a3b8;">2026</div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button onclick="window.imprimirCarnetDocente()"
+                style="background:#15803d; color:white; border:none; padding:12px 30px; border-radius:10px; font-weight:800; font-size:13px; cursor:pointer; text-transform:uppercase; letter-spacing:0.05em; transition: all 0.3s ease; box-shadow:0 4px 12px rgba(21,128,61,0.2);">
+                🖨️ Imprimir Carnet Individual
+            </button>
+        </div>`;
+
+        // Generar QR dentro del carnet
+        setTimeout(() => {
+            const qrTarget = document.getElementById(`qrDocente_${dni}`);
+            if (qrTarget) {
+                new QRCode(qrTarget, { 
+                    text: `DOCENTE|${dni}|${d.apellidos}|${d.condicion}`, 
+                    width: 75, 
+                    height: 75,
+                    colorDark: "#000000",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            }
+        }, 150);
+
+    } catch (err) {
+        console.error(err);
+        alert("Error al generar el carnet.");
+    }
+};
+
+// --- IMPRIMIR CARNET DOCENTE ---
+window.imprimirCarnetDocente = () => {
+    const contenido = document.getElementById('carnetDocentePrint');
+    if (!contenido) return;
+    const ventana = window.open('', '_blank', 'width=500,height=400');
+    ventana.document.write(`
+        <!DOCTYPE html><html><head>
+        <title>Imprimir Carnet - I.E. HZG</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+        <style>
+            body { 
+                margin:0; 
+                display:flex; 
+                justify-content:center; 
+                align-items:center; 
+                min-height:100vh; 
+                background:white; 
+                font-family: 'Inter', sans-serif;
+            }
+            @media print { 
+                body { background:white; }
+                #carnetDocentePrint { box-shadow: none !important; border: 1px solid #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+        </style>
+        </head><body>
+        ${contenido.outerHTML}
+        <script>window.onload=()=>{ setTimeout(()=>{ window.print(); window.close(); }, 500); }<\/script>
+        </body></html>`);
+    ventana.document.close();
+};
+
+// --- IMPRIMIR CARNETS MASIVOS DOCENTES ---
+window.imprimirTodosLosCarnetsDocentes = async () => {
+    if (docentesTodosMemoria.length === 0) return alert("No hay docentes registrados.");
+    if (!confirm(`¿Imprimir los carnets de los ${docentesTodosMemoria.length} docentes registrados?`)) return;
+
+    const lista = [...docentesTodosMemoria].sort((a, b) => (a.apellidos || '').localeCompare(b.apellidos || ''));
+    const ventana = window.open('', '', 'height=800,width=1000');
+
+    let contenidoCarnets = '';
+    lista.forEach(d => {
+        const condicionColor = d.condicion === 'NOMBRADO' ? '#15803d' : '#1d4ed8';
+        const condicionBg    = d.condicion === 'NOMBRADO' ? '#dcfce7' : '#dbeafe';
+        
+        contenidoCarnets += `
+            <div class="carnet">
+                <div class="cabecera">
+                    <img src="logo_colegio.jpeg" class="logo-img">
+                    <div class="cabecera-centro">
+                        <div class="cabecera-ie">I.E. HORACIO ZEVALLOS GÁMEZ</div>
+                        <div class="cabecera-sede">MALINGAS · TAMBOGRANDE</div>
+                    </div>
+                    <div class="badge-tipo">DOCENTE</div>
+                </div>
+                
+                <div class="cuerpo">
+                    <div class="seccion-qr">
+                        <div class="qr-wrapper">
+                            <div class="qr-code" data-dni="${d.dni}" data-nombres="${d.nombres}" data-apellidos="${d.apellidos}" data-condicion="${d.condicion}"></div>
+                        </div>
+                        <span class="qr-hint">ID DIGITAL</span>
+                    </div>
+
+                    <div class="seccion-info">
+                        <div class="info-grupo">
+                            <label>APELLIDOS</label>
+                            <div class="valor-principal">${(d.apellidos||'').toUpperCase()}</div>
+                        </div>
+                        <div class="info-grupo">
+                            <label>NOMBRES</label>
+                            <div class="valor-secundario">${(d.nombres||'').toUpperCase()}</div>
+                        </div>
+                        
+                        <div class="info-meta">
+                            <div class="dni-tag">DNI ${d.dni}</div>
+                            <div class="status-tag" style="background:${condicionBg}; color:${condicionColor}; border: 1px solid ${condicionColor}55;">
+                                ${d.condicion}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="footer">
+                    <div class="lema">DISCIPLINA · LEALTAD · HONRADEZ</div>
+                    <div class="periodo">2026</div>
+                </div>
+            </div>`;
+    });
+
+    ventana.document.write(`
+        <html>
+        <head>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+                
+                @page { size: A4; margin: 1cm; }
+                
+                body { 
+                    font-family: 'Inter', sans-serif; 
+                    margin: 0; padding: 0; background: #f4f4f4; 
+                }
+
+                .contenedor-impresion {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 15px;
+                    padding: 10px;
+                    justify-content: center;
+                }
+
+                .carnet {
+                    width: 8.6cm;
+                    height: 5.4cm;
+                    background: white;
+                    border-radius: 12px;
+                    overflow: hidden;
+                    border: 1px solid #e2e8f0;
+                    position: relative;
+                    display: flex;
+                    flex-direction: column;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                    page-break-inside: avoid;
+                }
+
+                /* Cabecera */
+                .cabecera {
+                    background: #15803d;
+                    padding: 8px 12px;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    color: white;
+                }
+
+                .logo-img {
+                    width: 32px; height: 32px;
+                    border-radius: 6px;
+                    background: white;
+                    padding: 2px;
+                    object-fit: contain;
+                }
+
+                .cabecera-centro { flex: 1; }
+                .cabecera-ie { font-size: 8px; font-weight: 800; letter-spacing: 0.5px; }
+                .cabecera-sede { font-size: 6px; opacity: 0.9; }
+
+                .badge-tipo {
+                    font-size: 7px;
+                    font-weight: 800;
+                    background: rgba(255,255,255,0.2);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    border: 1px solid rgba(255,255,255,0.3);
+                }
+
+                /* Cuerpo */
+                .cuerpo {
+                    flex: 1;
+                    display: flex;
+                    padding: 12px;
+                    gap: 12px;
+                    align-items: center;
+                }
+
+                .seccion-qr {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 4px;
+                }
+
+                .qr-wrapper {
+                    padding: 4px;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    background: #fff;
+                }
+
+                .qr-hint { font-size: 5px; font-weight: 700; color: #94a3b8; }
+
+                .seccion-info {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                }
+
+                .info-grupo label {
+                    display: block;
+                    font-size: 6px;
+                    font-weight: 700;
+                    color: #64748b;
+                    margin-bottom: 1px;
+                }
+
+                .valor-principal {
+                    font-size: 13px;
+                    font-weight: 800;
+                    color: #1e293b;
+                    line-height: 1;
+                }
+
+                .valor-secundario {
+                    font-size: 10px;
+                    font-weight: 600;
+                    color: #475569;
+                }
+
+                .info-meta {
+                    display: flex;
+                    gap: 6px;
+                    margin-top: 4px;
+                    align-items: center;
+                }
+
+                .dni-tag {
+                    font-size: 8px;
+                    font-weight: 700;
+                    color: #1e293b;
+                    background: #f1f5f9;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                }
+
+                .status-tag {
+                    font-size: 7px;
+                    font-weight: 800;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    text-transform: uppercase;
+                }
+
+                /* Footer */
+                .footer {
+                    background: #f8fafc;
+                    border-top: 1px solid #f1f5f9;
+                    padding: 4px 12px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+
+                .lema { font-size: 6px; font-weight: 700; color: #15803d; letter-spacing: 1px; }
+                .periodo { font-size: 7px; font-weight: 800; color: #94a3b8; }
+
+                @media print {
+                    body { background: white; }
+                    .carnet { 
+                        box-shadow: none; 
+                        -webkit-print-color-adjust: exact; 
+                        print-color-adjust: exact; 
+                    }
+                    .contenedor-impresion { padding: 0; gap: 10px; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="contenedor-impresion">${contenidoCarnets}</div>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+            <script>
+                document.querySelectorAll('.qr-code').forEach(div => {
+                    new QRCode(div, {
+                        text: 'DOCENTE|' + div.getAttribute('data-dni') + '|' + div.getAttribute('data-apellidos'),
+                        width: 60,
+                        height: 60,
+                        colorDark: "#000000",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+                });
+                setTimeout(() => { window.print(); window.close(); }, 1000);
+            <\/script>
+        </body>
+        </html>
+    `);
+    ventana.document.close();
+};
+// =========================================================
+// ===== MÓDULO ASISTENCIA & REPORTES DOCENTES =============
+// =========================================================
+
+// --- ASISTENCIA DIARIA DOCENTES (tiempo real) ---
+window.cargarAsistenciaDocentesDelDia = (fechaManual = null) => {
+    const hoy = fechaManual || new Date().toLocaleDateString('en-CA');
+    const inputFecha = document.getElementById('fechaConsultaDocentes');
+    if (inputFecha && !fechaManual) inputFecha.value = hoy;
+
+    const contenedor = document.getElementById('asistenciaDocentesHoy');
+    if (!contenedor) return;
+
+    onSnapshot(collection(db, "asistenciaDocentes", hoy, "registros"), (snapshot) => {
+        contenedor.innerHTML = "";
+
+        if (snapshot.empty) {
+            contenedor.innerHTML = `<div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">
+                No hay registros de asistencia docente para esta fecha (${hoy}).
+            </div>`;
+            return;
+        }
+
+        const registros = snapshot.docs.map(d => ({ ...d.data(), dni: d.id }))
+            .sort((a, b) => (a.apellidos || '').localeCompare(b.apellidos || ''));
+
+        const tabla = document.createElement('div');
+        tabla.className = "overflow-x-auto rounded-xl border border-slate-200 shadow-sm";
+        
+        tabla.innerHTML = `
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-green-700 text-white text-[11px] font-black uppercase">
+                        <th class="p-3">Entrada</th>
+                        <th class="p-3">Salida</th>
+                        <th class="p-3">DNI</th>
+                        <th class="p-3">Docente</th>
+                        <th class="p-3 text-center">Estado</th>
+                        <th class="p-3 text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white">
+                    ${registros.map(reg => {
+                        const est = (reg.estado || '').toUpperCase();
+                        
+                        // Lógica de colores corregida
+                        let colorEstado = 'bg-red-100 text-red-700 border-red-200';
+                        if (est.includes('PUNTUAL')) colorEstado = 'bg-green-100 text-green-700 border-green-200';
+                        else if (est.includes('TARDANZA')) colorEstado = 'bg-yellow-100 text-yellow-700 border-yellow-200';
+                        else if (est.includes('SALIDA')) colorEstado = 'bg-blue-100 text-blue-700 border-blue-200';
+                        else if (est.includes('JUSTIFICAD')) colorEstado = 'bg-indigo-100 text-indigo-700 border-indigo-200';
+
+                        return `<tr class="border-b last:border-0 hover:bg-slate-50 transition">
+                            <td class="p-3 font-bold text-green-700 text-sm">
+                                ${reg.horaEntrada || reg.hora || '--:--'}
+                            </td>
+                            <td class="p-3 font-bold text-blue-600 text-sm">
+                                ${reg.horaSalida || '--:--'}
+                            </td>
+                            <td class="p-3 font-mono text-xs text-slate-500">${reg.dni}</td>
+                            <td class="p-3">
+                                <div class="font-bold text-slate-700 text-sm">${reg.apellidos || ''}</div>
+                                <div class="text-xs text-slate-400">${reg.nombres || ''}</div>
+                            </td>
+                            <td class="p-3 text-center">
+                                <span class="px-2 py-1 rounded-full text-[10px] font-black border ${colorEstado}">
+                                    ${est || 'FALTÓ'}
+                                </span>
+                            </td>
+                            <td class="p-3 text-center">
+                                <button onclick="window.cambiarEstadoDocente('${reg.dni}', '${reg.nombres} ${reg.apellidos}', '${hoy}')"
+                                    class="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase hover:underline">
+                                    EDITAR
+                                </button>
+                            </td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>`;
+        contenedor.appendChild(tabla);
+
+        // --- RESUMEN DE CONTEO ---
+        const total = registros.length;
+        const puntuales = registros.filter(r => (r.estado || '').toUpperCase().includes('PUNTUAL')).length;
+        const tardanzas = registros.filter(r => (r.estado || '').toUpperCase().includes('TARDANZA')).length;
+        const faltas = registros.filter(r => {
+            const e = (r.estado || '').toUpperCase();
+            return e === '' || e.includes('FALTA');
+        }).length;
+
+        const resumen = document.createElement('div');
+        resumen.className = "mt-4 grid grid-cols-4 gap-3";
+        resumen.innerHTML = `
+            <div class="bg-slate-50 rounded-xl p-3 text-center border">
+                <p class="text-xs font-black text-slate-500 uppercase">Total</p>
+                <p class="text-2xl font-black text-slate-700">${total}</p>
+            </div>
+            <div class="bg-green-50 rounded-xl p-3 text-center border border-green-100">
+                <p class="text-xs font-black text-green-600 uppercase">Puntuales</p>
+                <p class="text-2xl font-black text-green-700">${puntuales}</p>
+            </div>
+            <div class="bg-yellow-50 rounded-xl p-3 text-center border border-yellow-100">
+                <p class="text-xs font-black text-yellow-600 uppercase">Tardanzas</p>
+                <p class="text-2xl font-black text-yellow-700">${tardanzas}</p>
+            </div>
+            <div class="bg-red-50 rounded-xl p-3 text-center border border-red-100">
+                <p class="text-xs font-black text-red-600 uppercase">Faltas</p>
+                <p class="text-2xl font-black text-red-700">${faltas}</p>
+            </div>`;
+        contenedor.appendChild(resumen);
+    });
+};
+
+// --- REGISTRAR ASISTENCIA MANUAL ---
+window.registrarAsistenciaDocenteManual = async () => {
+    const hoy = document.getElementById('fechaConsultaDocentes')?.value || new Date().toLocaleDateString('en-CA');
+    const snap = await getDocs(collection(db, "docentes"));
+    if (snap.empty) return alert("No hay docentes registrados. Primero registra docentes en la sección 'Docentes'.");
+
+    const lista = snap.docs.map(d => d.data()).sort((a,b) => (a.apellidos||'').localeCompare(b.apellidos||''));
+    const opciones = lista.map((d, i) => `${i+1}. ${d.apellidos} ${d.nombres} (${d.dni})`).join('\n');
+    const sel = prompt(`Selecciona el número del docente:\n\n${opciones}`);
+    if (!sel) return;
+    const idx = parseInt(sel) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= lista.length) return alert("Selección inválida.");
+
+    const docente = lista[idx];
+    const estadoSel = prompt(`Estado para ${docente.apellidos} ${docente.nombres}:\n1. Puntual\n2. Tardanza\n3. Tardanza Justificada\n4. Falta Justificada\n5. Falta`, "1");
+    const estados = { "1": "Puntual", "2": "Tardanza", "3": "Tardanza Justificada", "4": "Falta Justificada", "5": "Falta" };
+    const estado = estados[estadoSel];
+    if (!estado) return;
+
+    const hora = new Date().toLocaleTimeString('es-PE', { hour12: false });
+    await setDoc(doc(db, "asistenciaDocentes", hoy, "registros", docente.dni), {
+        dni: docente.dni, nombres: docente.nombres, apellidos: docente.apellidos,
+        condicion: docente.condicion, hora, estado, fecha: hoy
+    }, { merge: true });
+    alert(`✅ Asistencia registrada para ${docente.apellidos} ${docente.nombres}`);
+};
+
+// --- CAMBIAR ESTADO DOCENTE ---
+window.cambiarEstadoDocente = async (dni, nombre, fecha) => {
+    const n = prompt(`Estado para ${nombre.toUpperCase()}:\n1. Puntual\n2. Tardanza\n3. Tardanza Justificada\n4. Falta Justificada\n5. Falta`, "1");
+    const estados = { "1": "Puntual", "2": "Tardanza", "3": "Tardanza Justificada", "4": "Falta Justificada", "5": "Falta" };
+    const estado = estados[n];
+    if (!estado) return;
+    const hora = new Date().toLocaleTimeString('es-PE', { hour12: false });
+    await setDoc(doc(db, "asistenciaDocentes", fecha, "registros", dni), { estado, hora }, { merge: true });
+};
+
+// --- CERRAR DÍA DOCENTES ---
+window.cerrarDiaDocentes = async () => {
+    const hoy = new Date().toLocaleDateString('en-CA');
+    if (!confirm("¿Finalizar día y marcar como Puntual a los docentes sin registro?")) return;
+    const [snapDoc, snapAsis] = await Promise.all([
+        getDocs(collection(db, "docentes")),
+        getDocs(collection(db, "asistenciaDocentes", hoy, "registros"))
+    ]);
+    const yaRegistrados = new Set(snapAsis.docs.map(d => d.id));
+    const batch = writeBatch(db);
+    let cont = 0;
+    snapDoc.forEach(d => {
+        if (!yaRegistrados.has(d.id)) {
+            const dat = d.data();
+            batch.set(doc(db, "asistenciaDocentes", hoy, "registros", d.id), {
+                dni: dat.dni, nombres: dat.nombres, apellidos: dat.apellidos,
+                condicion: dat.condicion, hora: "07:45:00", estado: "Puntual", fecha: hoy
+            }, { merge: true });
+            cont++;
+        }
+    });
+    await batch.commit();
+    alert(`✅ Se regularizaron ${cont} docentes como Puntual.`);
+};
+
+// --- PDF DIARIO DOCENTES ---
+window.generarReporteDocentesPDF = async () => {
+    const { jsPDF } = window.jspdf;
+    const hoy = document.getElementById('fechaConsultaDocentes')?.value || new Date().toLocaleDateString('en-CA');
+    const snap = await getDocs(collection(db, "asistenciaDocentes", hoy, "registros"));
+    
+    if (snap.empty) return alert("No hay datos para exportar.");
+
+    const docPDF = new jsPDF();
+    // Extraemos los datos y nos aseguramos de capturar el DNI (id del doc)
+    const registros = snap.docs.map(d => ({ ...d.data(), dni: d.id }))
+        .sort((a,b) => (a.apellidos || '').localeCompare(b.apellidos || ''));
+
+    // Encabezado con colores institucionales
+    docPDF.setTextColor(21, 128, 61);
+    docPDF.setFontSize(14); docPDF.setFont("helvetica","bold");
+    docPDF.text("I.E. HORACIO ZEVALLOS GÁMEZ", 14, 14);
+    docPDF.setFontSize(9); docPDF.setTextColor(80);
+    docPDF.text(`MALINGAS - TAMBOGRANDE | ASISTENCIA DOCENTES`, 14, 20);
+    docPDF.setDrawColor(21,128,61); docPDF.line(14,22,196,22);
+    docPDF.setTextColor(0); docPDF.setFontSize(10);
+    docPDF.text(`FECHA DE REPORTE: ${hoy}`, 14, 28);
+
+    const body = registros.map((r, i) => [
+    i + 1, 
+    r.dni, 
+    `${r.apellidos || ''} ${r.nombres || ''}`.trim(),
+    r.horaEntrada || r.hora || '--:--', // Columna Entrada
+    r.horaSalida || '--:--',            // Columna Salida
+    (r.estado || 'Falta').toUpperCase()
+]);
+
+docPDF.autoTable({
+    startY: 33,
+    head: [['N°','DNI','DOCENTE','ENTRADA','SALIDA','ESTADO']],
+    body,
+        headStyles: { fillColor: [21,128,61], textColor: 255, fontStyle:'bold', fontSize:8 },
+        styles: { fontSize:8, cellPadding:2, overflow:'linebreak' },
+        columnStyles: { 2: { cellWidth: 60 } },
+        alternateRowStyles: { fillColor: [240,253,244] }
+    });
+
+    // Lógica de contadores corregida para que coincida con la APP (Mayúsculas)
+    const total = registros.length;
+    const p = registros.filter(r => (r.estado || '').toUpperCase().includes('PUNTUAL')).length;
+    const t = registros.filter(r => (r.estado || '').toUpperCase().includes('TARDANZA')).length;
+    const f = registros.filter(r => {
+        const est = (r.estado || '').toUpperCase();
+        return est === '' || est.includes('FALTA');
+    }).length;
+
+    const y = docPDF.lastAutoTable.finalY + 10;
+    docPDF.setFontSize(9); docPDF.setTextColor(50);
+    docPDF.text(`RESUMEN: Total: ${total} | Puntuales: ${p} | Tardanzas: ${t} | Faltas: ${f}`, 14, y);
+
+    docPDF.save(`Asistencia_Docentes_${hoy}.pdf`);
+};
+
+// --- EXCEL DIARIO DOCENTES ---
+window.generarReporteDocentesExcel = async () => {
+    const hoy = document.getElementById('fechaConsultaDocentes')?.value || new Date().toLocaleDateString('en-CA');
+    const snap = await getDocs(collection(db, "asistenciaDocentes", hoy, "registros"));
+    
+    if (snap.empty) return alert("No hay datos para exportar.");
+
+    const datos = snap.docs.map(d => {
+    const r = d.data();
+    return { 
+        "DNI": d.id, 
+        "APELLIDOS": r.apellidos || '', 
+        "NOMBRES": r.nombres || '',
+        "ENTRADA": r.horaEntrada || r.hora || '--:--', 
+        "SALIDA": r.horaSalida || '--:--', 
+        "ESTADO": (r.estado || 'Falta').toUpperCase() 
+    };
+    }).sort((a,b) => a.APELLIDOS.localeCompare(b.APELLIDOS));
+
+    const ws = XLSX.utils.json_to_sheet(datos);
+
+    // Ajuste de anchos de columna
+    ws['!cols'] = [{wch:12}, {wch:25}, {wch:25}, {wch:15}, {wch:10}, {wch:15}];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Asistencia");
+
+    // Intentar descargar el archivo
+    try {
+        XLSX.writeFile(wb, `Asistencia_Docentes_${hoy}.xlsx`);
+    } catch (error) {
+        console.error("Error al generar Excel:", error);
+        alert("Error al generar el Excel. Inténtalo de nuevo.");
+    }
+};
+
+// =========================================================
+// ===== REPORTE MENSUAL DOCENTES ==========================
+// =========================================================
+
+window.generarReporteMensualDocentes = async () => {
+    const mes   = document.getElementById('mesConsultaDocentes')?.value;
+    const tbody = document.getElementById('tbodyReporteDocentesMensual');
+    const thead = document.getElementById('theadReporteDocentesMensual');
+    if (!mes) return alert("Selecciona un mes primero.");
+
+    tbody.innerHTML = `<tr><td colspan="10" class="p-10 text-center text-slate-400 italic">⏳ Cargando reporte de ${mes}…</td></tr>`;
+    thead.innerHTML = '';
+
+    const [year, month] = mes.split('-').map(Number);
+    const diasEnMes = new Date(year, month, 0).getDate();
+    const DIAS_C = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+    const MESES  = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+
+    const fechas = [];
+    for (let d = 1; d <= diasEnMes; d++) {
+        const fecha = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        fechas.push({ fecha, dia: d, diaSemana: new Date(year, month-1, d).getDay() });
+    }
+
+    // Cargar docentes
+    const snapDoc = await getDocs(collection(db, "docentes"));
+    const docentes = {};
+    snapDoc.forEach(d => {
+        const dat = d.data();
+        docentes[d.id] = { ...dat, dni: d.id, diasReg: {}, asistencias:0, tardanzas:0, faltas:0, justificados:0 };
+    });
+
+    // Cargar asistencia día a día
+    const LOTE = 7;
+    for (let i = 0; i < fechas.length; i += LOTE) {
+        const lote = fechas.slice(i, i + LOTE);
+        const snaps = await Promise.all(lote.map(f => getDocs(collection(db, "asistenciaDocentes", f.fecha, "registros"))));
+        snaps.forEach((snap, si) => {
+            const fInfo = lote[si];
+            snap.forEach(docReg => {
+                const dni = docReg.id;
+                if (!docentes[dni]) return;
+                docentes[dni].diasReg[fInfo.fecha] = docReg.data();
+            });
+        });
+    }
+
+    // Detectar feriados (días hábiles sin ningún registro)
+    const feriadosSet = new Set();
+    fechas.forEach(f => {
+        if (f.diaSemana === 0 || f.diaSemana === 6) return;
+        const tieneReg = Object.values(docentes).some(d => d.diasReg[f.fecha]);
+        if (!tieneReg) feriadosSet.add(f.fecha);
+    });
+
+    // Calcular contadores
+    Object.values(docentes).forEach(doc => {
+        fechas.forEach(f => {
+            if (f.diaSemana === 0 || f.diaSemana === 6 || feriadosSet.has(f.fecha)) return;
+            const reg = doc.diasReg[f.fecha];
+            if (!reg) { doc.faltas++; return; }
+            const est = (reg.estado||'').toLowerCase();
+            if (est.includes('justificad'))   doc.justificados++;
+            if (est.includes('tardanza'))     { doc.tardanzas++; doc.asistencias++; }
+            else if (est.includes('falta') && !est.includes('justificad')) doc.faltas++;
+            else if (est !== '')              doc.asistencias++;
+            else                              doc.faltas++;
+        });
+    });
+
+    const lista = Object.values(docentes).sort((a,b) => (a.apellidos||'').localeCompare(b.apellidos||''));
+    window.reporteMensualDocentesData   = lista;
+    window.reporteMensualDocentesFechas = fechas;
+    window.reporteMensualDocentesMes    = mes;
+    window.reporteMensualDocentesFeriados = feriadosSet;
+
+    if (lista.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" class="p-10 text-center text-slate-400 italic">No hay docentes registrados.</td></tr>`;
+        return;
+    }
+
+    // Subtítulo
+    const sub = document.getElementById('reporteSubtituloDocentes');
+    if (sub) sub.textContent = `Año: ${year} | Mes: ${MESES[month-1]} | ${lista.length} docentes`;
+
+    // Encabezado de tabla
+    const diasHabiles = fechas.filter(f => f.diaSemana !== 0 && f.diaSemana !== 6);
+    let thHTML = `<tr>
+        <th class="sticky left-0 z-30 bg-green-800 px-2 py-2 text-center border border-green-600 text-[10px]">N°</th>
+        <th class="sticky bg-green-800 px-2 py-2 text-left border border-green-600 text-[10px]" style="left:30px;min-width:180px">DOCENTE</th>
+        <th class="bg-green-800 px-2 py-2 text-center border border-green-600 text-[10px]">COND.</th>`;
+    fechas.forEach(f => {
+        const esFS = f.diaSemana === 0 || f.diaSemana === 6;
+        const esFer = feriadosSet.has(f.fecha);
+        const bg = esFS ? 'bg-slate-600' : esFer ? 'bg-purple-800' : 'bg-green-700';
+        thHTML += `<th class="${bg} px-1 py-2 text-center border border-green-600 text-[9px]" style="min-width:26px;max-width:26px">
+            <div>${DIAS_C[f.diaSemana]}</div><div>${f.dia}</div></th>`;
+    });
+    thHTML += `<th class="bg-green-800 px-2 py-2 text-center border border-green-600 text-[10px]">A</th>
+               <th class="bg-green-800 px-2 py-2 text-center border border-green-600 text-[10px]">T</th>
+               <th class="bg-green-800 px-2 py-2 text-center border border-green-600 text-[10px]">F</th>
+               <th class="bg-green-800 px-2 py-2 text-center border border-green-600 text-[10px]">J</th>
+               </tr>`;
+    thead.innerHTML = thHTML;
+
+    // Filas
+    const fragment = document.createDocumentFragment();
+    lista.forEach((doc, idx) => {
+        const tr = document.createElement('tr');
+        tr.style.cssText = idx % 2 === 0 ? 'background:#f8fafc' : 'background:#fff';
+        let celdas = `
+            <td class="sticky left-0 z-10 text-center border border-slate-200 text-[10px] font-bold" style="background:inherit;padding:2px 4px">${idx+1}</td>
+            <td class="sticky border border-slate-200 text-[10px]" style="left:30px;background:inherit;padding:3px 6px;min-width:180px">
+                <div class="font-black text-slate-700">${doc.apellidos||''}</div>
+                <div class="text-slate-400">${doc.nombres||''}</div>
+            </td>
+            <td class="border border-slate-200 text-[9px] text-center font-bold" style="padding:2px 4px">
+                <span style="color:${doc.condicion==='NOMBRADO'?'#15803d':'#1d4ed8'}">${doc.condicion||'-'}</span>
+            </td>`;
+        fechas.forEach(f => {
+            const esFS = f.diaSemana === 0 || f.diaSemana === 6;
+            const esFer = feriadosSet.has(f.fecha);
+            if (esFS) {
+                celdas += `<td style="background:#e2e8f0;min-width:26px;max-width:26px;border:1px solid #cbd5e1;"></td>`;
+            } else if (esFer) {
+                celdas += `<td style="background:#f3e8ff;min-width:26px;max-width:26px;border:1px solid #e2e8f0;text-align:center;padding:2px;vertical-align:middle;">
+                    <span style="font-size:7px;font-weight:900;color:#7c3aed;">FER</span></td>`;
+            } else {
+                const reg = doc.diasReg[f.fecha];
+                if (!reg) {
+                    celdas += `<td style="background:#fee2e2;min-width:26px;max-width:26px;border:1px solid #fecaca;text-align:center;padding:2px;vertical-align:middle;">
+                        <span style="font-size:9px;font-weight:900;color:#dc2626;">F</span></td>`;
+                } else {
+                    const est = (reg.estado||'').toLowerCase();
+                    const letra = est.includes('justificad') ? 'J' : est.includes('tardanza') ? 'T' : est.includes('falta') ? 'F' : 'A';
+                    const bg = letra==='A' ? '#dcfce7' : letra==='T' ? '#fef3c7' : letra==='J' ? '#dbeafe' : '#fee2e2';
+                    const col = letra==='A' ? '#15803d' : letra==='T' ? '#d97706' : letra==='J' ? '#1d4ed8' : '#dc2626';
+                    celdas += `<td title="${reg.estado||''}" style="background:${bg};min-width:26px;max-width:26px;border:1px solid #e2e8f0;text-align:center;padding:2px;vertical-align:middle;">
+                        <span style="font-size:9px;font-weight:900;color:${col};">${letra}</span></td>`;
+                }
+            }
+        });
+        celdas += `
+            <td style="text-align:center;border:1px solid #86efac;padding:2px;background:#f0fdf4"><span style="font-size:10px;font-weight:900;color:#15803d">${doc.asistencias}</span></td>
+            <td style="text-align:center;border:1px solid #fde68a;padding:2px;background:#fffbeb"><span style="font-size:10px;font-weight:900;color:#d97706">${doc.tardanzas}</span></td>
+            <td style="text-align:center;border:1px solid #fecaca;padding:2px;background:#fff5f5"><span style="font-size:10px;font-weight:900;color:#dc2626">${doc.faltas}</span></td>
+            <td style="text-align:center;border:1px solid #bfdbfe;padding:2px;background:#eff6ff"><span style="font-size:10px;font-weight:900;color:#1d4ed8">${doc.justificados}</span></td>`;
+        tr.innerHTML = celdas;
+        fragment.appendChild(tr);
+    });
+
+    // Fila totales
+    const trTot = document.createElement('tr');
+    trTot.style.cssText = 'background:#f0fdf4;font-weight:900;border-top:3px solid #15803d;';
+    const sumA = lista.reduce((s,d)=>s+d.asistencias,0);
+    const sumT = lista.reduce((s,d)=>s+d.tardanzas,0);
+    const sumF = lista.reduce((s,d)=>s+d.faltas,0);
+    const sumJ = lista.reduce((s,d)=>s+d.justificados,0);
+    let totCeldas = `
+        <td colspan="3" style="position:sticky;left:0;z-index:10;background:#dcfce7;padding:4px 8px;border:1px solid #86efac;font-size:11px;font-weight:900;color:#166534;text-transform:uppercase;">
+            TOTALES GENERALES
+        </td>`;
+    fechas.forEach((f, fi) => {
+        const esFS = f.diaSemana === 0 || f.diaSemana === 6;
+        const esFer = feriadosSet.has(f.fecha);
+        if (esFS) {
+            totCeldas += `<td style="background:#e2e8f0;min-width:26px;max-width:26px;border:1px solid #cbd5e1;"></td>`;
+        } else if (esFer) {
+            totCeldas += `<td style="background:#f3e8ff;min-width:26px;max-width:26px;border:1px solid #e2e8f0;text-align:center;padding:2px;">
+                <span style="font-size:7px;font-weight:900;color:#7c3aed;">FER</span></td>`;
+        } else {
+            let cA=0,cT=0,cF=0;
+            lista.forEach(d => {
+                const reg = d.diasReg[f.fecha];
+                if (!reg) { cF++; return; }
+                const est=(reg.estado||'').toLowerCase();
+                if(est.includes('tardanza'))cT++;
+                else if(est.includes('falta')&&!est.includes('justificad'))cF++;
+                else if(est!=='')cA++;
+                else cF++;
+            });
+            totCeldas += `<td style="min-width:26px;max-width:26px;padding:2px 1px;text-align:center;border:1px solid #86efac;vertical-align:top;font-size:7px;background:#f0fdf4;">
+                ${cA>0?`<div style="color:#15803d;font-weight:900;line-height:1.2;">A:${cA}</div>`:''}
+                ${cT>0?`<div style="color:#d97706;font-weight:900;line-height:1.2;">T:${cT}</div>`:''}
+                ${cF>0?`<div style="color:#dc2626;font-weight:900;line-height:1.2;">F:${cF}</div>`:''}
+            </td>`;
+        }
+    });
+    totCeldas += `
+        <td style="text-align:center;border:1px solid #86efac;background:#dcfce7;padding:4px"><span style="background:#15803d;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:900">${sumA}</span></td>
+        <td style="text-align:center;border:1px solid #86efac;background:#dcfce7;padding:4px"><span style="background:#d97706;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:900">${sumT}</span></td>
+        <td style="text-align:center;border:1px solid #86efac;background:#dcfce7;padding:4px"><span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:900">${sumF}</span></td>
+        <td style="text-align:center;border:1px solid #86efac;background:#dcfce7;padding:4px"><span style="background:#1d4ed8;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:900">${sumJ}</span></td>`;
+    trTot.innerHTML = totCeldas;
+    fragment.appendChild(trTot);
+    tbody.appendChild(fragment);
+};
+
+// --- EXCEL MENSUAL DOCENTES ---
+window.descargarReporteMensualDocentesExcel = () => {
+    const data   = window.reporteMensualDocentesData;
+    const fechas = window.reporteMensualDocentesFechas;
+    const mes    = window.reporteMensualDocentesMes;
+    const feriados = window.reporteMensualDocentesFeriados || new Set();
+    if (!data || data.length === 0) return alert("Primero genera el reporte.");
+    const DS = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+
+    const filas = data.map((d, i) => {
+        const row = { "N°": i+1, "APELLIDOS": d.apellidos||'', "NOMBRES": d.nombres||'', "DNI": d.dni||'', "CONDICIÓN": d.condicion||'' };
+        fechas.forEach(f => {
+            const colKey = `${DS[f.diaSemana]} ${f.dia}`;
+            if (f.diaSemana===0||f.diaSemana===6) { row[colKey]=''; return; }
+            if (feriados.has(f.fecha)) { row[colKey]='FER'; return; }
+            const reg = d.diasReg?d.diasReg[f.fecha]:null;
+            if (!reg) { row[colKey]='F'; return; }
+            const est=(reg.estado||'').toLowerCase();
+            row[colKey] = est.includes('justificad')?'J':est.includes('tardanza')?'T':est.includes('falta')?'F':'A';
+        });
+        row["ASIST."]=d.asistencias||0; row["TARD."]=d.tardanzas||0;
+        row["FALTAS"]=d.faltas||0; row["JUSTIF."]=d.justificados||0;
+        return row;
+    });
+
+    const ws = XLSX.utils.json_to_sheet(filas);
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let C=range.s.c;C<=range.e.c;++C) {
+        const cell=XLSX.utils.encode_cell({r:0,c:C});
+        if(!ws[cell])continue;
+        ws[cell].s={fill:{fgColor:{rgb:"15803D"}},font:{color:{rgb:"FFFFFF"},bold:true},alignment:{horizontal:"center"}};
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Asistencia Docentes");
+    XLSX.writeFile(wb, `Asistencia_Mensual_Docentes_${mes}.xlsx`);
+};
+
+// --- PDF MENSUAL DOCENTES ---
+window.descargarReporteMensualDocentesPDF = () => {
+    const data   = window.reporteMensualDocentesData;
+    const fechas = window.reporteMensualDocentesFechas;
+    const mes    = window.reporteMensualDocentesMes;
+    const feriados = window.reporteMensualDocentesFeriados || new Set();
+    if (!data || data.length === 0) return alert("Primero genera el reporte.");
+
+    const { jsPDF } = window.jspdf;
+    const docPDF = new jsPDF({ orientation:'landscape', unit:'mm', format:'a3' });
+    const DS = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+    const MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+    const [year, month] = mes.split('-').map(Number);
+
+    docPDF.setFont("Helvetica","bold"); docPDF.setFontSize(13); docPDF.setTextColor(21,128,61);
+    docPDF.text("I.E. HORACIO ZEVALLOS GÁMEZ — MALINGAS", 14, 12);
+    docPDF.setFontSize(9); docPDF.setTextColor(80);
+    docPDF.text(`REGISTRO MENSUAL DE ASISTENCIA DOCENTE | ${MESES[month-1]} ${year}`, 14, 18);
+
+    const headCols = ["N°","DOCENTE","DNI","COND."];
+    fechas.forEach(f => headCols.push(`${DS[f.diaSemana]}\n${f.dia}`));
+    headCols.push("A","T","F","J");
+
+    const tableData = data.map((d, idx) => {
+        const row = [idx+1, `${d.apellidos}\n${d.nombres}`, d.dni||'', d.condicion||''];
+        fechas.forEach(f => {
+            const esFS=f.diaSemana===0||f.diaSemana===6;
+            if(esFS){row.push('');return;}
+            if(feriados.has(f.fecha)){row.push('FER');return;}
+            const reg=d.diasReg?d.diasReg[f.fecha]:null;
+            if(!reg){row.push('F');return;}
+            const est=(reg.estado||'').toLowerCase();
+            row.push(est.includes('justificad')?'J':est.includes('tardanza')?'T':est.includes('falta')?'F':'A');
+        });
+        row.push(d.asistencias||0,d.tardanzas||0,d.faltas||0,d.justificados||0);
+        return row;
+    });
+
+    const totRow=['','TOTALES','',''];
+    fechas.forEach(f=>{
+        const esFS=f.diaSemana===0||f.diaSemana===6;
+        if(esFS){totRow.push('');return;}
+        if(feriados.has(f.fecha)){totRow.push('FER');return;}
+        let cA=0,cT=0,cF=0;
+        data.forEach(d=>{
+            const reg=d.diasReg?d.diasReg[f.fecha]:null;
+            if(!reg){cF++;return;}
+            const est=(reg.estado||'').toLowerCase();
+            if(est.includes('tardanza'))cT++;
+            else if(est.includes('falta')&&!est.includes('justificad'))cF++;
+            else if(est!=='')cA++;
+            else cF++;
+        });
+        totRow.push(`${cA}/${cT}/${cF}`);
+    });
+    totRow.push(data.reduce((s,d)=>s+d.asistencias,0),data.reduce((s,d)=>s+d.tardanzas,0),
+                data.reduce((s,d)=>s+d.faltas,0),data.reduce((s,d)=>s+d.justificados,0));
+    tableData.push(totRow);
+
+    docPDF.autoTable({
+        startY:24, head:[headCols], body:tableData, theme:'grid',
+        styles:{fontSize:5.5,cellPadding:1,halign:'center',valign:'middle',overflow:'linebreak'},
+        headStyles:{fillColor:[21,128,61],textColor:255,fontSize:5.5,fontStyle:'bold',halign:'center'},
+        columnStyles:{0:{cellWidth:7},1:{cellWidth:45,halign:'left'},2:{cellWidth:17},3:{cellWidth:14}}
+    });
+
+    docPDF.save(`Asistencia_Mensual_Docentes_${mes}.pdf`);
+};

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>I.E. Horacio Zeballos Gámez - Sistema de Asistencia</title>
+    <title>I.E. Horacio Zevallos Gámez - Sistema de Asistencia</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -57,7 +57,7 @@
             <div class="flex justify-center mb-4">
                 <img src="logo_colegio.jpeg" alt="Logo" class="h-16 w-16 rounded-full shadow-md border p-1">
             </div>
-            <h2 class="text-xl font-black text-center text-emerald-800 uppercase leading-tight mb-2">I.E. Horacio Zeballos Gámez</h2>
+            <h2 class="text-xl font-black text-center text-emerald-800 uppercase leading-tight mb-2">I.E. Horacio Zevallos Gámez</h2>
             <p class="text-center text-slate-400 text-[10px] tracking-[0.1em] font-bold uppercase mb-6">Malingas - Tambogrande</p>
 
             <form id="formLogin" class="space-y-4">
@@ -81,18 +81,22 @@
             <div class="flex items-center gap-3">
                 <img src="logo_colegio.jpeg" alt="Logo" class="h-12 w-12 rounded-full bg-white p-1 shadow-md">
                 <div>
-                    <h1 class="font-bold text-lg leading-tight uppercase">I.E. Horacio Zeballos Gámez</h1>
+                    <h1 class="font-bold text-lg leading-tight uppercase">I.E. Horacio Zevallos Gámez</h1>
                     <p class="text-[10px] tracking-[0.2em] opacity-90 font-semibold uppercase">Malingas - Tambogrande</p>
                 </div>
             </div>
             
             <div class="flex flex-wrap gap-2 items-center">
-                <button onclick="mostrarSeccion('registro')" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">Registro</button>
+                <button onclick="mostrarSeccion('registro')" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">Registro alumnos</button>
                 <button onclick="mostrarSeccion('lista')" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">Alumnos</button>
                 <button onclick="mostrarSeccion('asistencia'); if(typeof window.cargarAsistenciaDelDia === 'function') window.cargarAsistenciaDelDia();" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase flex items-center gap-1">
-                    <span>📋</span> Asistencia
+                    <span></span> Asistencia Alumnos
                 </button>
                 <button onclick="mostrarSeccion('reportes')" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">Reportes por mes</button>
+                <button onclick="mostrarSeccion('registro-docentes')" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">Registro Docentes</button>
+                <button onclick="mostrarSeccion('lista-docentes')" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">Docentes</button>
+                <button onclick="mostrarSeccion('asistencia-docentes'); if(typeof window.cargarAsistenciaDocentesDelDia === 'function') window.cargarAsistenciaDocentesDelDia();" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">Asistencia Docentes</button>
+                <button onclick="mostrarSeccion('reportes-docentes')" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">Reportes Docentes</button>
                 <button onclick="window.cerrarSesion()" class="bg-red-700 text-white px-3 py-2 rounded-xl hover:bg-red-800 transition text-xs font-black uppercase ml-2 shadow">
                     Salir
                 </button>
@@ -291,6 +295,166 @@
                                     Selecciona un mes y haz clic en "Generar Reporte" para visualizar los datos.
                                 </td>
                             </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== SECCIÓN REGISTRO DOCENTES ===== -->
+        <section id="sec-registro-docentes" class="hidden section-transition">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <!-- FORMULARIO -->
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                    <div class="border-b pb-3 mb-5">
+                        <h2 class="text-lg font-bold text-slate-700 uppercase">Registro de Docentes</h2>
+                        <p class="text-xs text-slate-400 font-semibold mt-1 uppercase">I.E. Horacio Zevallos Gámez — Malingas</p>
+                    </div>
+                    <form id="docenteForm" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase mb-1">DNI del Docente</label>
+                            <input type="text" id="docenteDni" placeholder="Ingrese DNI (8 dígitos)" maxlength="8"
+                                class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase mb-1">Nombres</label>
+                            <input type="text" id="docenteNombres" placeholder="Nombres del docente"
+                                class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase mb-1">Apellidos</label>
+                            <input type="text" id="docenteApellidos" placeholder="Apellidos del docente"
+                                class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-black text-slate-500 uppercase mb-1">Condicion Laboral</label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <label class="flex items-center gap-2 p-3 border-2 border-slate-200 rounded-xl cursor-pointer hover:border-green-500 transition has-[:checked]:border-green-600 has-[:checked]:bg-green-50">
+                                    <input type="radio" name="docenteCondicion" value="NOMBRADO" class="accent-green-600">
+                                    <span class="text-sm font-bold text-slate-600">Nombrado</span>
+                                </label>
+                                <label class="flex items-center gap-2 p-3 border-2 border-slate-200 rounded-xl cursor-pointer hover:border-blue-500 transition has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                                    <input type="radio" name="docenteCondicion" value="CONTRATADO" class="accent-blue-600">
+                                    <span class="text-sm font-bold text-slate-600">Contratado</span>
+                                </label>
+                            </div>
+                        </div>
+                        <button type="submit" class="w-full bg-malingas-green text-white py-4 rounded-xl font-bold hover:bg-green-800 transition shadow-lg uppercase tracking-wider">
+                            Guardar Docente
+                        </button>
+                    </form>
+                </div>
+
+                <!-- CARNET -->
+                <div>
+                    <div id="carnetDocenteContainer" class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 flex flex-col items-center justify-center min-h-[300px]">
+                        <p class="text-slate-400 text-sm italic text-center py-10">Guarda un docente para generar su carnet</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== SECCIÓN LISTA DOCENTES ===== -->
+        <section id="sec-lista-docentes" class="hidden section-transition">
+            <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-5 border-b pb-4 gap-3">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-700 uppercase">Lista de Docentes</h2>
+                        <p class="text-xs text-slate-400 font-semibold mt-1 uppercase">I.E. Horacio Zevallos Gámez — Malingas</p>
+                    </div>
+<div class="flex items-center gap-3">
+                        <button onclick="window.imprimirTodosLosCarnetsDocentes()" class="bg-orange-600 text-white px-4 py-2 rounded-xl font-bold text-[10px] hover:bg-orange-700 transition shadow-lg uppercase">
+                            Imprimir Todos los Carnets
+                        </button>
+                        <span id="contadorDocentes" class="bg-green-100 text-green-700 px-4 py-1.5 rounded-full text-xs font-black">0 docentes</span>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <input type="text" id="buscadorDocentes" onkeyup="window.filtrarDocentes()" placeholder="Buscar por nombre o DNI..."
+                        class="w-full p-3 border-2 border-green-100 rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition text-sm">
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead>
+                            <tr class="bg-green-50 text-green-700 font-black uppercase text-[11px] border-b-2 border-green-100">
+                                <th class="p-3">DNI</th>
+                                <th class="p-3">Apellidos</th>
+                                <th class="p-3">Nombres</th>
+                                <th class="p-3 text-center">Condicion</th>
+                                <th class="p-3 text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaDocentes" class="text-slate-600 divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== SECCIÓN ASISTENCIA DOCENTES ===== -->
+        <section id="sec-asistencia-docentes" class="hidden section-transition">
+            <div class="mb-4 flex flex-wrap items-center gap-3 bg-green-50 p-3 rounded-xl border border-green-200">
+                <label class="text-xs font-bold text-green-800 uppercase">Consultar Fecha:</label>
+                <input type="date" id="fechaConsultaDocentes" onchange="window.cargarAsistenciaDocentesDelDia(this.value)" class="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-green-600">
+            </div>
+            <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 border-b pb-4 gap-4">
+                    <h2 class="text-xl font-black text-slate-700 uppercase">Control de Asistencia — Docentes</h2>
+                    <div class="flex gap-2 flex-wrap">
+                        <button onclick="window.registrarAsistenciaDocenteManual()" class="bg-malingas-green text-white px-4 py-2 rounded-xl shadow-lg hover:bg-green-800 transition text-xs font-bold uppercase">
+                            Registrar Docente
+                        </button>
+                        <button onclick="window.generarReporteDocentesPDF()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-emerald-700 transition text-xs font-bold uppercase">PDF</button>
+                        <button onclick="window.generarReporteDocentesExcel()" class="bg-blue-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-blue-700 transition text-xs font-bold uppercase">Excel</button>
+                        <button onclick="window.cerrarDiaDocentes()" class="bg-slate-700 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-slate-800 transition text-xs font-bold uppercase">Finalizar Dia</button>
+                    </div>
+                </div>
+                <div id="asistenciaDocentesHoy" class="space-y-4">
+                    <div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">Cargando registros de asistencia docente...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== SECCIÓN REPORTES DOCENTES ===== -->
+        <section id="sec-reportes-docentes" class="hidden section-transition">
+            <!-- Filtros -->
+            <div class="mb-6 flex flex-wrap items-center gap-4 p-4 bg-white rounded-xl border border-green-200 shadow-sm">
+                <div class="flex flex-col">
+                    <label class="text-xs font-bold text-green-800 uppercase mb-1">Seleccionar Mes:</label>
+                    <input type="month" id="mesConsultaDocentes" class="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-green-600 text-sm">
+                </div>
+                <div class="flex items-end mt-4">
+                    <button onclick="window.generarReporteMensualDocentes()" class="bg-malingas-green text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase hover:bg-green-800 transition shadow">
+                        📋 Generar Reporte
+                    </button>
+                </div>
+            </div>
+
+            <!-- Leyenda -->
+            <div class="mb-4 flex flex-wrap gap-3 items-center">
+                <span class="flex items-center gap-1 text-xs font-bold"><span class="inline-block w-6 h-6 rounded bg-green-500 text-white text-center leading-6 text-[10px]">A</span> Asistió</span>
+                <span class="flex items-center gap-1 text-xs font-bold"><span class="inline-block w-6 h-6 rounded bg-yellow-400 text-white text-center leading-6 text-[10px]">T</span> Tardanza</span>
+                <span class="flex items-center gap-1 text-xs font-bold"><span class="inline-block w-6 h-6 rounded bg-red-500 text-white text-center leading-6 text-[10px]">F</span> Falta</span>
+                <span class="flex items-center gap-1 text-xs font-bold"><span class="inline-block w-6 h-6 rounded bg-blue-500 text-white text-center leading-6 text-[10px]">J</span> Justificado</span>
+            </div>
+
+            <!-- Tabla reporte mensual -->
+            <div id="reporteMensualDocentesContainer" class="bg-white rounded-2xl shadow-xl border border-slate-100">
+                <div class="flex flex-col md:flex-row justify-between items-center p-4 border-b gap-4">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-700 uppercase">Registro Mensual de Asistencia — Docentes</h2>
+                        <p id="reporteSubtituloDocentes" class="text-xs text-slate-400 font-semibold mt-1"></p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="window.descargarReporteMensualDocentesExcel()" class="bg-blue-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-blue-700 transition text-xs font-bold uppercase">Excel</button>
+                        <button onclick="window.descargarReporteMensualDocentesPDF()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-emerald-700 transition text-xs font-bold uppercase">PDF</button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto custom-scroll" style="max-height:600px;">
+                    <table id="tablaReporteDocentesMensual" class="border-collapse text-[11px]" style="min-width:max-content;">
+                        <thead id="theadReporteDocentesMensual" class="sticky top-0 z-20 bg-green-700 text-white font-black uppercase"></thead>
+                        <tbody id="tbodyReporteDocentesMensual" class="divide-y divide-slate-100">
+                            <tr><td colspan="10" class="p-10 text-center text-slate-400 italic text-sm">Selecciona un mes y haz clic en "Generar Reporte".</td></tr>
                         </tbody>
                     </table>
                 </div>
