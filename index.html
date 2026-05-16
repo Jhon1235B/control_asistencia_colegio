@@ -89,8 +89,8 @@
             <div class="flex flex-wrap gap-2 items-center">
                 <button onclick="mostrarSeccion('registro')" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">Registro alumnos</button>
                 <button onclick="mostrarSeccion('lista')" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">Alumnos</button>
-                <button onclick="mostrarSeccion('asistencia'); if(typeof window.cargarAsistenciaDelDia === 'function') window.cargarAsistenciaDelDia();" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase flex items-center gap-1">
-                    <span></span> Asistencia Alumnos
+                <button onclick="mostrarSeccion('asistencia'); const hoy=new Date().toLocaleDateString('en-CA'); const fi=document.getElementById('fechaConsulta'); if(fi){fi.value=hoy;} if(typeof window.cambiarFechaAsistencia === 'function') window.cambiarFechaAsistencia(hoy);" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">
+                    Asistencia Alumnos
                 </button>
                 <button onclick="mostrarSeccion('reportes')" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">Reportes por mes</button>
                 <button onclick="mostrarSeccion('registro-docentes')" class="hover:bg-white/20 px-3 py-2 rounded-xl transition text-xs font-black uppercase">Registro Docentes</button>
@@ -209,20 +209,31 @@
         </section>
 
         <section id="sec-asistencia" class="hidden section-transition">
-            <div class="mb-4 flex items-center gap-3 bg-green-50 p-3 rounded-xl border border-green-200">
-                <label class="text-xs font-bold text-green-800 uppercase">Consultar Fecha:</label>
+            <!-- Barra superior: fecha + buscador -->
+            <div class="mb-4 flex flex-wrap items-center gap-3 bg-green-50 p-3 rounded-xl border border-green-200">
+                <label class="text-xs font-bold text-green-800 uppercase">Fecha:</label>
                 <input type="date" id="fechaConsulta" onchange="window.cambiarFechaAsistencia(this.value)" class="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-green-600">
+                <div class="flex-1 min-w-[200px]">
+                    <input type="text" id="buscadorAsistencia" onkeyup="window.filtrarAsistencia()" placeholder="Buscar por nombre o DNI..."
+                        class="w-full p-2 border-2 border-green-200 rounded-lg outline-none focus:ring-2 focus:ring-green-600 text-sm">
+                </div>
             </div>
+
             <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
-                <div class="flex flex-col md:flex-row justify-between items-center mb-6 border-b pb-4 gap-4">
-                    <h2 class="text-xl font-black text-slate-700 uppercase">Control de Asistencia</h2>
-                    <div class="flex gap-2">
+                <!-- Cabecera con botones y pestañas de grado -->
+                <div class="flex flex-col md:flex-row justify-between items-start mb-4 border-b pb-4 gap-4">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-700 uppercase">Control de Asistencia</h2>
+                        <!-- Pestañas de grado/sección -->
+                        <div id="tabsGrados" class="flex flex-wrap gap-2 mt-3"></div>
+                    </div>
+                    <div class="flex gap-2 flex-shrink-0">
                         <button onclick="window.generarReportePDF()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-emerald-700 transition flex items-center gap-2 text-xs font-bold uppercase"><span>📄</span> PDF</button>
                         <button onclick="window.generarReporteExcel()" class="bg-blue-600 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-blue-700 transition flex items-center gap-2 text-xs font-bold uppercase"><span>📊</span> Excel</button>
-                        <button onclick="window.cerrarDia()" class="bg-malingas-green text-white px-4 py-2 rounded-xl shadow-lg hover:bg-green-800 transition text-xs font-bold uppercase">Finalizar Día</button>   
+                        <button onclick="window.cerrarDia()" class="bg-malingas-green text-white px-4 py-2 rounded-xl shadow-lg hover:bg-green-800 transition text-xs font-bold uppercase">Finalizar Día</button>
                     </div>
                 </div>
-                <div id="asistenciaHoy" class="space-y-6">
+                <div id="asistenciaHoy" class="space-y-4">
                     <div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">Cargando registros de asistencia...</div>
                 </div>
             </div>
@@ -378,12 +389,12 @@
                     <table class="w-full text-left text-xs">
                         <thead>
                             <tr class="bg-green-50 text-green-700 font-black uppercase text-[11px] border-b-2 border-green-100">
-                                <th class="p-3">DNI</th>
-                                <th class="p-3">Apellidos</th>
-                                <th class="p-3">Nombres</th>
-                                <th class="p-3 text-center">Condicion</th>
-                                <th class="p-3 text-center">Acciones</th>
-                            </tr>
+    <th class="p-3">DNI</th>
+    <th class="p-3">Apellidos</th>
+    <th class="p-3">Nombres</th>
+    <th class="p-3 text-center">Condicion</th>
+    <th class="p-3 text-center">Acciones</th>
+</tr>
                         </thead>
                         <tbody id="tablaDocentes" class="text-slate-600 divide-y divide-slate-100"></tbody>
                     </table>

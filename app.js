@@ -78,10 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Llamamos a la inicialización aquí
-    if (typeof iniciarControlAsistencia === 'function') {
-        iniciarControlAsistencia(); 
-    }
+   // La asistencia se carga solo cuando el usuario navega a esa sección
 });
 
 // 3. Función para cerrar sesión
@@ -95,8 +92,11 @@ window.cerrarSesion = async () => {
 };
 
 window.cambiarFechaAsistencia = (nuevaFecha) => {
-    console.log("Cambiando vista a:", nuevaFecha);
-    iniciarControlAsistencia(nuevaFecha);
+    const fecha = nuevaFecha || new Date().toLocaleDateString('en-CA');
+    const input = document.getElementById('fechaConsulta');
+    if (input) input.value = fecha;
+    _tabActiva = null;
+    iniciarControlAsistencia(fecha);
 };
 
 
@@ -227,6 +227,10 @@ window.cerrarDia = async () => {
 };
 
 // --- 3. ASISTENCIA EN TIEMPO REAL ---
+// Estado de pestañas
+let _asistenciaRegistros = [];
+let _tabActiva = null;
+
 const iniciarControlAsistencia = (fechaManual = null) => {
     const hoy = fechaManual || new Date().toLocaleDateString('en-CA');
     const contenedorAsis = document.getElementById('asistenciaHoy');
@@ -236,14 +240,15 @@ const iniciarControlAsistencia = (fechaManual = null) => {
         contenedorAsis.innerHTML = "";
 
         if (snapshot.empty) {
+            const t = document.getElementById('tabsGrados');
+            if (t) t.innerHTML = '';
             contenedorAsis.innerHTML = `<div class="p-10 text-center text-slate-400 italic border-2 border-dashed rounded-xl">
                 No hay alumnos registrados para esta fecha (${hoy})...
             </div>`;
             return;
         }
 
-        // ✅ SIN peticiones extra — lee grado/sección del mismo documento
-        const registros = snapshot.docs.map(docSnap => {
+        _asistenciaRegistros = snapshot.docs.map(docSnap => {
             const d = docSnap.data();
             return {
                 ...d,
@@ -252,89 +257,139 @@ const iniciarControlAsistencia = (fechaManual = null) => {
             };
         });
 
-        // Agrupar por Aula
-        const grupos = registros.reduce((acc, curr) => {
+        // Agrupar por aula y ordenar
+        const grupos = _asistenciaRegistros.reduce((acc, curr) => {
             if (!acc[curr.aula]) acc[curr.aula] = [];
             acc[curr.aula].push(curr);
             return acc;
         }, {});
+        const aulasOrdenadas = Object.keys(grupos).sort();
 
-        // Renderizar bloques por sección
-        Object.keys(grupos).sort().forEach(aula => {
-            const sectionDiv = document.createElement('div');
-            sectionDiv.className = "mb-8 overflow-hidden rounded-xl border border-slate-200 shadow-sm";
+        // Si no hay tab activa o la activa ya no existe, usar la primera
+        if (!_tabActiva || !grupos[_tabActiva]) _tabActiva = aulasOrdenadas[0];
 
-            sectionDiv.innerHTML = `
-                <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex justify-between items-center">
-                    <h3 class="font-black text-green-800 text-sm">📍 SECCIÓN: ${aula}</h3>
-                    <span class="bg-green-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
-                        ${grupos[aula].length} PRESENTES
-                    </span>
-                </div>
-                <table class="w-full text-left border-collapse">
-                    <tbody class="bg-white">
-                        ${grupos[aula].map(reg => {
-                            const color = reg.estado === "Puntual" ? "bg-green-100 text-green-700" :
-                                          reg.estado === "Tardanza" ? "bg-yellow-100 text-yellow-700" :
-                                          reg.estado?.includes("Justificada") ? "bg-blue-100 text-blue-700" : 
-                                          "bg-red-100 text-red-700";
-return `
-    <tr class="border-b last:border-0 hover:bg-slate-50 transition">
-        <td class="p-3 font-bold text-green-700 w-20 text-sm">${reg.hora || '--:--'}</td>
-        
-        <td class="p-3">
-            <div class="font-bold text-slate-700 text-sm">${reg.nombres}</div>
-            <div class="text-[9px] text-slate-400 font-bold uppercase">DNI: ${reg.dni}</div>
-            ${reg.apoderado ? `<div class="text-[9px] text-blue-600 font-bold uppercase">APODODDERADO: ${reg.apoderado}</div>` : ''} 
-        </td>
-        
-        <td class="p-3 flex-grow">
-            <div class="flex flex-col gap-1 items-start">
-                <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${color}">
-                    ${reg.estado?.toUpperCase() || 'FALTÓ'}
-                </span>
-                
-                <div class="flex flex-wrap gap-1 mt-1">
-                    ${reg.alertaSalud ? `
-                        <span class="bg-blue-600 text-white px-2 py-0.5 rounded text-[8px] font-bold shadow-sm uppercase">
-                            🚑 ${reg.alertaSalud}
-                        </span>
-                    ` : ''}
+       // Guardar aulas en variable global para acceder por índice
+        window._aulasAsistencia = aulasOrdenadas;
 
-                    ${reg.alertaConducta ? `
-                        <span class="bg-red-500 text-white px-2 py-0.5 rounded text-[8px] font-bold shadow-sm uppercase">
-                            ⚠️ ${reg.alertaConducta}
-                        </span>
-                    ` : ''}
+        const tabsContainer = document.getElementById('tabsGrados');
+        tabsContainer.innerHTML = aulasOrdenadas.map((aula, idx) => `
+            <button onclick="window.cambiarTabAsistencia(window._aulasAsistencia[${idx}])"
+                id="tab_${idx}"
+                class="tab-aula px-3 py-1.5 rounded-lg text-xs font-black uppercase border-2 transition
+                    ${aula === _tabActiva
+                        ? 'bg-green-700 text-white border-green-700'
+                        : 'bg-white text-green-700 border-green-200 hover:border-green-500'}">
+                ${aula} <span class="ml-1 opacity-75">(${grupos[aula].length})</span>
+            </button>`).join('');
 
-                    ${reg.alertaCorte ? `
-                        <span class="bg-orange-500 text-white px-2 py-0.5 rounded text-[8px] font-bold shadow-sm uppercase">
-                            ✂️ ${reg.alertaCorte}
-                        </span>
-                    ` : ''}
-
-                    ${reg.alertaVestimenta ? `
-                        <span class="bg-purple-500 text-white px-2 py-0.5 rounded text-[8px] font-bold shadow-sm uppercase">
-                            👔 ${reg.alertaVestimenta}
-                        </span>
-                    ` : ''}
-                </div>
-            </div>
-        </td>
-        
-        <td class="p-3 text-right w-24">
-            <button onclick="window.justificarFalta('${reg.dni}', '${reg.nombres}')"
-                    class="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-tighter hover:underline">
-                EDITAR
-            </button>
-        </td>
-    </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>`;
-            contenedorAsis.appendChild(sectionDiv);
-        });
+        // Renderizar tabla de la pestaña activa
+        window._renderTablaAsistencia(grupos, _tabActiva, hoy);
     });
+};
+
+window.cambiarTabAsistencia = (aula) => {
+    _tabActiva = aula;
+    // Actualizar estilos de pestañas
+    const aulas = window._aulasAsistencia || [];
+    document.querySelectorAll('.tab-aula').forEach((btn, idx) => {
+        const esActiva = aulas[idx] === aula;
+        btn.className = `tab-aula px-3 py-1.5 rounded-lg text-xs font-black uppercase border-2 transition
+            ${esActiva ? 'bg-green-700 text-white border-green-700' : 'bg-white text-green-700 border-green-200 hover:border-green-500'}`;
+    });
+    // Re-agrupar y renderizar
+    const grupos = _asistenciaRegistros.reduce((acc, curr) => {
+        if (!acc[curr.aula]) acc[curr.aula] = [];
+        acc[curr.aula].push(curr);
+        return acc;
+    }, {});
+    window._renderTablaAsistencia(grupos, aula, document.getElementById('fechaConsulta')?.value || new Date().toLocaleDateString('en-CA'));
+};
+
+window.filtrarAsistencia = () => {
+    const texto = document.getElementById('buscadorAsistencia')?.value.toLowerCase().trim() || '';
+    const grupos = _asistenciaRegistros.reduce((acc, curr) => {
+        if (!acc[curr.aula]) acc[curr.aula] = [];
+        acc[curr.aula].push(curr);
+        return acc;
+    }, {});
+    const hoy = document.getElementById('fechaConsulta')?.value || new Date().toLocaleDateString('en-CA');
+
+    if (!texto) {
+        window._renderTablaAsistencia(grupos, _tabActiva, hoy);
+        return;
+    }
+
+    // Al buscar, mostrar resultados de TODOS los grados sin filtrar por tab
+    const filtrados = _asistenciaRegistros.filter(r =>
+        (r.nombres || '').toLowerCase().includes(texto) ||
+        (r.dni || '').includes(texto)
+    );
+    window._renderTablaConResultados(filtrados, hoy);
+};
+
+window._renderTablaAsistencia = (grupos, aula, hoy) => {
+    const contenedorAsis = document.getElementById('asistenciaHoy');
+    contenedorAsis.innerHTML = '';
+    const lista = grupos[aula] || [];
+    contenedorAsis.appendChild(window._crearTablaAula(aula, lista, hoy));
+};
+
+window._renderTablaConResultados = (lista, hoy) => {
+    const contenedorAsis = document.getElementById('asistenciaHoy');
+    contenedorAsis.innerHTML = '';
+    if (lista.length === 0) {
+        contenedorAsis.innerHTML = `<div class="p-8 text-center text-slate-400 italic border-2 border-dashed rounded-xl">No se encontraron resultados.</div>`;
+        return;
+    }
+    contenedorAsis.appendChild(window._crearTablaAula('Resultados de búsqueda', lista, hoy));
+};
+
+window._crearTablaAula = (titulo, lista, hoy) => {
+    const div = document.createElement('div');
+    div.className = "overflow-hidden rounded-xl border border-slate-200 shadow-sm";
+    div.innerHTML = `
+        <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex justify-between items-center">
+            <h3 class="font-black text-green-800 text-sm">SECCION: ${titulo}</h3>
+            <span class="bg-green-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">${lista.length} REGISTROS</span>
+        </div>
+        <table class="w-full text-left border-collapse">
+            <tbody class="bg-white">
+                ${lista.map(reg => {
+                    const color = reg.estado === "Puntual"       ? "bg-green-100 text-green-700" :
+                                  reg.estado === "Tardanza"      ? "bg-yellow-100 text-yellow-700" :
+                                  reg.estado?.includes("Justificada") ? "bg-blue-100 text-blue-700" :
+                                  "bg-red-100 text-red-700";
+                    return `
+                    <tr class="border-b last:border-0 hover:bg-slate-50 transition">
+                        <td class="p-3 font-bold text-green-700 w-20 text-sm">${reg.hora || '--:--'}</td>
+                        <td class="p-3">
+                            <div class="font-bold text-slate-700 text-sm">${reg.nombres}</div>
+                            <div class="text-[9px] text-slate-400 font-bold uppercase">DNI: ${reg.dni}</div>
+                            ${reg.apoderado ? `<div class="text-[9px] text-blue-600 font-bold uppercase">APODERADO: ${reg.apoderado}</div>` : ''}
+                        </td>
+                        <td class="p-3">
+                            <div class="flex flex-col gap-1 items-start">
+                                <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${color}">
+                                    ${reg.estado?.toUpperCase() || 'FALTÓ'}
+                                </span>
+                                <div class="flex flex-wrap gap-1 mt-1">
+                                    ${reg.alertaSalud    ? `<span class="bg-blue-600 text-white px-2 py-0.5 rounded text-[8px] font-bold uppercase">${reg.alertaSalud}</span>` : ''}
+                                    ${reg.alertaConducta ? `<span class="bg-red-500 text-white px-2 py-0.5 rounded text-[8px] font-bold uppercase">${reg.alertaConducta}</span>` : ''}
+                                    ${(reg.alertaVestimenta || reg.alertaCorte) ? `<span class="bg-orange-500 text-white px-2 py-0.5 rounded text-[8px] font-bold uppercase">${reg.alertaVestimenta || reg.alertaCorte}</span>` : ''}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="p-3 text-right w-24">
+                            <button onclick="window.justificarFalta('${reg.dni}', '${reg.nombres}')"
+                                class="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-tighter hover:underline">
+                                EDITAR
+                            </button>
+                        </td>
+                    </tr>`;
+                }).join('')}
+            </tbody>
+        </table>`;
+    return div;
 };
 
 // Función auxiliar para dar un respiro a la API
@@ -609,10 +664,10 @@ const MESES_ES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
 
 // Tipos de incidencia: clave en el registro → etiqueta corta para mostrar
 const TIPOS_INCIDENCIA = [
-    { campo: 'alertaConducta',  emoji: '⚠️', label: 'Conducta'   },
-    { campo: 'alertaVestimenta',emoji: '👔', label: 'Vestimenta' },
-    { campo: 'alertaCorte',     emoji: '✂️', label: 'Corte'      },
-    { campo: 'alertaSalud',     emoji: '🚑', label: 'Salud'      },
+    { campo: 'alertaConducta',  emoji: '', label: 'Conducta/Infraccion' },
+    { campo: 'alertaVestimenta',emoji: '', label: 'Present. Personal'   },
+    { campo: 'alertaCorte',     emoji: '', label: 'Present. Personal'   },
+    { campo: 'alertaSalud',     emoji: '', label: 'Salida/Permiso'      },
 ];
 
 /** Devuelve info de celda para un registro de un día */
@@ -1830,8 +1885,8 @@ window.eliminarAlumno = async (id) => { if(confirm("¿Eliminar?")) await deleteD
 
 // --- 3. JUSTIFICAR Y CONDUCTA (Sincronizado con el modelo de la App) ---
 window.justificarFalta = async (dni, nombre) => {
-    const n = prompt(`Cambiar estado para ${nombre.toUpperCase()}:\n1. Puntual\n2. Tardanza\n3. Salida por Salud\n4. Tardanza Justificada\n5. Falta Justificada\n6. Falta\n7. Indisciplina\n8. Vestimenta Inadecuada\n9. Corte Inadecuado`, "1");
-    
+const n = prompt(`Cambiar estado para ${nombre.toUpperCase()}:\n1. Puntual\n2. Tardanza\n3. Salida/Permiso\n4. Tardanza Justificada\n5. Falta Justificada\n6. Falta\n7. Conducta Inadecuada/Infraccion\n8. Presentacion Personal Inadecuada`, "1");
+
     const ahora = new Date();
     const horaActual = ahora.toLocaleTimeString('es-PE', { hour12: false });
     const hoy = document.getElementById('fechaConsulta')?.value || ahora.toLocaleDateString('en-CA');
@@ -1855,25 +1910,20 @@ window.justificarFalta = async (dni, nombre) => {
                 mensajeWhatsApp = `*CONTROL DE ASISTENCIA HZG*\n\nEstimado(a) *${nombreApoderado}*,\nEstudiante: *${nombre.toUpperCase()}*\nEstado Actualizado: *${updates.estado.toUpperCase()}*\nHora: ${horaActual}\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
                 break;
 
-            case "3": // SALIDA POR SALUD
-                updates = { alertaSalud: `SALIDA SALUD (${horaActual})` };
-                mensajeWhatsApp = `*REPORTE MÉDICO - I.E. HZG*\n\nEstimado(a) *${nombreApoderado}*,\nSe informa que el estudiante *${nombre.toUpperCase()}* se retira por motivos de SALUD.\nHora: ${horaActual}\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
+            case "3": // SALIDA/PERMISO
+                updates = { alertaSalud: `SALIDA/PERMISO (${horaActual})` };
+                mensajeWhatsApp = `*AVISO DE SALIDA - I.E. HZG*\n\nEstimado(a) *${nombreApoderado}*,\nSe informa que el estudiante *${nombre.toUpperCase()}* se retiró con SALIDA/PERMISO autorizado.\nHora: ${horaActual}\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
                 break;
 
-            case "7": // INDISCIPLINA
-                updates = { alertaConducta: `CONDUCTA INADECUADA (${horaActual})` };
+            case "7": // CONDUCTA INADECUADA / INFRACCION
+                updates = { alertaConducta: `CONDUCTA INADECUADA/INFRACCION (${horaActual})` };
                 esIncidencia = true;
-                mensajeWhatsApp = `*REPORTE DE CONDUCTA - I.E. HZG*\n\nEstimado(a) *${nombreApoderado}*,\nse le informa que el estudiante *${nombre.toUpperCase()}* ha presentado una *CONDUCTA INADECUADA*.\nHora: ${horaActual}\n\nSe estara coordinando para que se acerque a la institución educativa.\n\n_Disciplina, Lealtad, Honradez._`;
+                mensajeWhatsApp = `*REPORTE DE CONDUCTA - I.E. HZG*\n\nEstimado(a) *${nombreApoderado}*,\nSe informa que el estudiante *${nombre.toUpperCase()}* ha presentado una *CONDUCTA INADECUADA / INFRACCION*.\nHora: ${horaActual}\n\nSe estara coordinando para que se acerque a la institución educativa.\n\n_Disciplina, Lealtad, Honradez._`;
                 break;
 
-            case "8": // VESTIMENTA
-                updates = { alertaVestimenta: `VESTIMENTA INADECUADA (${horaActual})` };
-                mensajeWhatsApp = `*REPORTE DE VESTIMENTA - I.E. HZG*\n\nEstimado(a) *${nombreApoderado}*,\nse le informa que el estudiante *${nombre.toUpperCase()}* registra: *VESTIMENTA INADECUADA*.\nHora: ${horaActual}\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
-                break;
-
-            case "9": // CORTE
-                updates = { alertaCorte: `CORTE INADECUADO (${horaActual})` };
-                mensajeWhatsApp = `*REPORTE DE PRESENTACIÓN - I.E. HZG*\n\nEstimado(a) *${nombreApoderado}*,\nse le informa que el estudiante *${nombre.toUpperCase()}* registra: *CORTE DE CABELLO INADECUADO*.\nHora: ${horaActual}\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
+            case "8": // PRESENTACION PERSONAL INADECUADA (unifica vestimenta + corte)
+                updates = { alertaVestimenta: `PRESENTACION PERSONAL INADECUADA (${horaActual})`, alertaCorte: "" };
+                mensajeWhatsApp = `*REPORTE DE PRESENTACION - I.E. HZG*\n\nEstimado(a) *${nombreApoderado}*,\nSe informa que el estudiante *${nombre.toUpperCase()}* registra: *PRESENTACION PERSONAL INADECUADA* (vestimenta y/o corte de cabello).\nHora: ${horaActual}\n\n_Malingas: Disciplina, Lealtad, Honradez._`;
                 break;
 
             default: return;
@@ -1883,16 +1933,25 @@ window.justificarFalta = async (dni, nombre) => {
         if (n === "7") {
             const idConducta = Date.now().toString();
             await setDoc(doc(db, "alumnos", dni, "conducta", idConducta), {
-                fecha: hoy, hora: horaActual, incidencia: "Conducta Inadecuada", nombres: nombre.toUpperCase()
+                fecha: hoy, hora: horaActual, incidencia: "Conducta Inadecuada/Infraccion", nombres: nombre.toUpperCase()
             });
         }
 
         // Actualizamos en la lista de asistencia de hoy (usando merge para no chancar otros datos)
         await setDoc(doc(db, "asistencia", hoy, "registros", dni), updates, { merge: true });
         
-        // Enviamos notificación
+        // Enviamos notificación (borrando el anterior si existe)
         if (telefono && mensajeWhatsApp) {
-            await window.enviarNotificacionUltraMsg(telefono, mensajeWhatsApp);
+            // Leer messageId anterior guardado en Firestore
+            const regDoc = await getDoc(doc(db, "asistencia", hoy, "registros", dni));
+            const msgIdAnterior = regDoc.exists() ? regDoc.data().whatsappMsgId : null;
+            if (msgIdAnterior) await window.borrarMensajeWhatsApp(msgIdAnterior);
+
+            // Enviar nuevo mensaje y guardar su ID
+            const nuevoMsgId = await window.enviarNotificacionUltraMsg(telefono, mensajeWhatsApp);
+            if (nuevoMsgId) {
+                await setDoc(doc(db, "asistencia", hoy, "registros", dni), { whatsappMsgId: nuevoMsgId }, { merge: true });
+            }
         }
         
         alert("✅ Registro actualizado y notificado al apoderado.");
@@ -1906,29 +1965,37 @@ window.justificarFalta = async (dni, nombre) => {
 // NUEVA FUNCIÓN PARA TU BOT PROPIO (Node.js)
 window.enviarNotificacionUltraMsg = async (telefono, nombre, estado, mensajePersonalizado) => {
     try {
-        // Aseguramos que el mensaje enviado incluya el nombre o el texto necesario
         const mensajeFinal = mensajePersonalizado || `Hola, ${nombre}. Su estado de asistencia ha sido actualizado.`;
 
         const response = await fetch(NUEVA_API_URL, {
             method: 'POST',
-            // Dependiendo de si tu servidor espera JSON o formulario (x-www-form-urlencoded)
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                phone: telefono,
-                message: mensajeFinal
-            })
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ phone: telefono, message: mensajeFinal })
         });
 
-        // Verificamos si la respuesta es correcta
-        if (!response.ok) {
-            throw new Error(`Error en el servidor HTTP: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
 
-        console.log("✅ Mensaje enviado correctamente mediante la nueva API.");
+        const data = await response.json().catch(() => ({}));
+        const messageId = data.id || data.messageId || data.message_id || null;
+        console.log("✅ Mensaje enviado. ID:", messageId);
+        return messageId;
     } catch (e) {
-        console.error("❌ Error al enviar mensaje mediante la nueva API:", e);
+        console.error("❌ Error al enviar mensaje:", e);
+        return null;
+    }
+};
+
+window.borrarMensajeWhatsApp = async (messageId) => {
+    if (!messageId) return;
+    try {
+        await fetch(NUEVA_API_URL.replace('enviar', 'borrar'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ message_id: messageId })
+        });
+        console.log("🗑️ Mensaje anterior borrado:", messageId);
+    } catch (e) {
+        console.error("Error al borrar mensaje:", e);
     }
 };
 // --- NUEVA FUNCIÓN: Ajuste Dinámico de Texto ---
@@ -2022,8 +2089,7 @@ function renderizarTablaDocentes() {
     
     if (docentesFiltradosMemoria.length === 0) {
         // Se cambió colspan a 8 porque ahora hay más columnas
-        tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-400 italic">No hay docentes registrados.</td></tr>`;
-        return;
+        tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-400 italic">No hay docentes registrados.</td></tr>`;
     }
     
     tbody.innerHTML = docentesFiltradosMemoria.map(d => {
@@ -2039,10 +2105,7 @@ function renderizarTablaDocentes() {
             <td class="p-3 text-center">
                 <span class="px-2 py-1 rounded-full text-[10px] font-black ${badgeColor}">${d.condicion || '---'}</span>
             </td>
-            <td class="p-3 text-center font-bold text-green-600 text-xs">${d.asistencias || 0}</td>
-            <td class="p-3 text-center font-bold text-amber-500 text-xs">${d.tardanzas || 0}</td>
-            <td class="p-3 text-center font-bold text-red-500 text-xs">${d.faltas || 0}</td>
-            
+           
             <td class="p-3 text-center">
                 <div class="flex gap-1 justify-center">
                     <button onclick="window.generarCarnetDocente('${d.dni}')"
@@ -2116,73 +2179,94 @@ window.generarCarnetDocente = async (dni) => {
 
         container.innerHTML = `
         <div id="carnetDocentePrint" style="
-            width: 325px;
-            height: 204px;
+            width: 210px;
             background: white;
-            border-radius: 12px;
+            border-radius: 14px;
             overflow: hidden;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-            border: 1px solid #e2e8f0;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+            font-family: 'Segoe UI', Arial, sans-serif;
+            border: 2px solid #15803d;
             display: flex;
             flex-direction: column;
-            position: relative;
         ">
+            <!-- FRANJA TOP -->
+            <div style="height:5px; background:linear-gradient(90deg,#166534,#4ade80,#166534);"></div>
+
             <!-- CABECERA -->
-            <div style="background:#15803d; padding: 10px 14px; display: flex; align-items: center; gap: 10px; color: white;">
-                <img src="logo_colegio.jpeg" style="width:36px; height:36px; border-radius:6px; background:white; padding:2px; object-fit:contain; flex-shrink:0;">
-                <div style="flex:1;">
-                    <div style="font-size:9px; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">I.E. Horacio Zevallos Gámez</div>
-                    <div style="font-size:7px; opacity:0.9; text-transform:uppercase;">Malingas · Tambogrande</div>
-                </div>
-                <div style="font-size:8px; font-weight:800; background:rgba(255,255,255,0.2); padding:3px 8px; border-radius:4px; border:1px solid rgba(255,255,255,0.3); text-transform:uppercase;">
-                    Docente
-                </div>
+            <div style="background:#15803d; padding:10px 12px; text-align:center; color:white;">
+                <img src="logo_colegio.jpeg" style="width:46px; height:46px; border-radius:50%; border:2px solid rgba(255,255,255,0.7); object-fit:cover; margin-bottom:5px;">
+                <div style="font-size:8px; font-weight:700; opacity:0.85; text-transform:uppercase; letter-spacing:0.06em;">I.E. Horacio Zevallos Gámez</div>
+                <div style="font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:0.04em; margin-top:1px;">Carnet Docente</div>
+                <div style="font-size:7px; opacity:0.7; margin-top:1px;">Malingas · Tambogrande</div>
             </div>
 
-            <!-- CUERPO -->
-            <div style="flex:1; display:flex; padding: 12px 16px; gap: 15px; align-items: center; background: white;">
-                <!-- QR -->
-                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
-                    <div style="padding:4px; border:1px solid #e2e8f0; border-radius:8px; background:white;">
-                        <div id="qrDocente_${dni}" style="width:75px; height:75px;"></div>
-                    </div>
-                    <span style="font-size:6px; font-weight:700; color:#94a3b8; text-transform:uppercase;">ID Digital</span>
+            <!-- FOTO -->
+            <div style="background:#f8fafc; padding:14px 0 10px; display:flex; flex-direction:column; align-items:center; border-bottom:1px solid #e2e8f0;">
+                <div style="
+                    width:52px; height:62px;
+                    border:2px dashed #86efac;
+                    border-radius:8px;
+                    background:#f0fdf4;
+                    display:flex; flex-direction:column;
+                    align-items:center; justify-content:center;
+                    color:#86efac; font-size:10px; font-weight:700;
+                    text-align:center; gap:4px; cursor:pointer;
+                    position:relative; overflow:hidden;
+                " id="fotoDocenteBox_${dni}" onclick="document.getElementById('fotoDocenteInput_${dni}').click()">
+                    <svg width="14" height="14" fill="none" stroke="#86efac" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        <span style="font-size:5.5px; color:#86efac; font-weight:700; text-align:center;">Foto</span>
+                    <img id="fotoDocentePreview_${dni}" src="" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;">
+                </div>
+                <input type="file" id="fotoDocenteInput_${dni}" accept="image/*" style="display:none;"
+                    onchange="
+                        const f=this.files[0]; if(!f) return;
+                        const r=new FileReader();
+                        r.onload=e=>{
+                            const img=document.getElementById('fotoDocentePreview_${dni}');
+                            img.src=e.target.result; img.style.display='block';
+                        };
+                        r.readAsDataURL(f);
+                    ">
+            </div>
+
+            <!-- DATOS -->
+            <div style="padding:12px 14px; display:flex; flex-direction:column; gap:7px; flex:1;">
+                <div style="text-align:center; border-bottom:1px solid #f1f5f9; padding-bottom:8px;">
+                    <div style="font-size:7px; color:#94a3b8; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:2px;">Apellidos</div>
+                    <div style="font-size:15px; font-weight:900; color:#0f172a; text-transform:uppercase; line-height:1.1;">${(d.apellidos||'').toUpperCase()}</div>
+                    <div style="font-size:7px; color:#94a3b8; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; margin:6px 0 2px;">Nombres</div>
+                    <div style="font-size:11px; font-weight:700; color:#334155; text-transform:uppercase;">${(d.nombres||'').toUpperCase()}</div>
                 </div>
 
-                <!-- DATOS -->
-                <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
-                    <div>
-                        <label style="display:block; font-size:7px; font-weight:700; color:#64748b; margin-bottom:1px; text-transform:uppercase;">Apellidos</label>
-                        <div style="font-size:14px; font-weight:800; color:#1e293b; line-height:1.1;">${(d.apellidos||'').toUpperCase()}</div>
+                <div style="display:flex; justify-content:center; gap:6px; align-items:center;">
+                    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:5px; padding:4px 10px; font-size:10px; font-weight:800; color:#475569; font-family:monospace;">
+                        DNI: ${d.dni}
                     </div>
-                    <div>
-                        <label style="display:block; font-size:7px; font-weight:700; color:#64748b; margin-bottom:1px; text-transform:uppercase;">Nombres</label>
-                        <div style="font-size:11px; font-weight:600; color:#475569; line-height:1.1;">${(d.nombres||'').toUpperCase()}</div>
+                    <div style="background:${condicionBg}; border:1px solid ${condicionColor}33; border-radius:5px; padding:4px 10px; font-size:9px; font-weight:900; color:${condicionColor}; text-transform:uppercase;">
+                        ${d.condicion}
                     </div>
-                    
-                    <div style="display:flex; gap:6px; margin-top:4px; align-items:center;">
-                        <div style="font-size:9px; font-weight:700; color:#1e293b; background:#f1f5f9; padding:3px 8px; border-radius:4px; font-family:monospace;">
-                            DNI ${d.dni}
-                        </div>
-                        <div style="font-size:8px; font-weight:800; padding:3px 8px; border-radius:4px; text-transform:uppercase; background:${condicionBg}; color:${condicionColor}; border: 1px solid ${condicionColor}44;">
-                            ${d.condicion}
-                        </div>
-                    </div>
+                </div>
+
+                <!-- QR -->
+                <div style="display:flex; flex-direction:column; align-items:center; gap:3px; margin-top:4px;">
+                    <div id="qrDocente_${dni}" style="padding:3px; border:1.5px solid #e2e8f0; border-radius:6px; background:white;"></div>
+                    <div style="font-size:6.5px; color:#94a3b8; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;">ID Digital</div>
                 </div>
             </div>
 
             <!-- PIE -->
-            <div style="background:#f8fafc; border-top:1px solid #f1f5f9; padding:5px 14px; display:flex; justify-content:space-between; align-items:center;">
-                <div style="font-size:7px; font-weight:700; color:#15803d; letter-spacing:1px; text-transform:uppercase;">Disciplina · Lealtad · Honradez</div>
-                <div style="font-size:8px; font-weight:800; color:#94a3b8;">2026</div>
+            <div style="background:linear-gradient(90deg,#f0fdf4,#dcfce7,#f0fdf4); border-top:1.5px solid #bbf7d0; padding:5px 12px; text-align:center;">
+                <div style="font-size:7px; color:#15803d; font-weight:900; text-transform:uppercase; letter-spacing:0.1em;">Disciplina · Lealtad · Honradez</div>
             </div>
+
+            <!-- FRANJA BOT -->
+            <div style="height:4px; background:linear-gradient(90deg,#166534,#4ade80,#166534);"></div>
         </div>
 
-        <div style="display:flex; gap:10px; margin-top:20px;">
+        <div style="display:flex; gap:10px; margin-top:16px;">
             <button onclick="window.imprimirCarnetDocente()"
-                style="background:#15803d; color:white; border:none; padding:12px 30px; border-radius:10px; font-weight:800; font-size:13px; cursor:pointer; text-transform:uppercase; letter-spacing:0.05em; transition: all 0.3s ease; box-shadow:0 4px 12px rgba(21,128,61,0.2);">
-                🖨️ Imprimir Carnet Individual
+                style="background:#15803d; color:white; border:none; padding:10px 28px; border-radius:8px; font-weight:900; font-size:12px; cursor:pointer; text-transform:uppercase; letter-spacing:0.05em; box-shadow:0 4px 12px rgba(21,128,61,0.3);">
+                Imprimir Carnet
             </button>
         </div>`;
 
@@ -2192,8 +2276,8 @@ window.generarCarnetDocente = async (dni) => {
             if (qrTarget) {
                 new QRCode(qrTarget, { 
                     text: `DOCENTE|${dni}|${d.apellidos}|${d.condicion}`, 
-                    width: 75, 
-                    height: 75,
+                    width: 68, 
+                    height: 68,
                     colorDark: "#000000",
                     colorLight: "#ffffff",
                     correctLevel: QRCode.CorrectLevel.M
@@ -2241,247 +2325,238 @@ window.imprimirCarnetDocente = () => {
 // --- IMPRIMIR CARNETS MASIVOS DOCENTES ---
 window.imprimirTodosLosCarnetsDocentes = async () => {
     if (docentesTodosMemoria.length === 0) return alert("No hay docentes registrados.");
-    if (!confirm(`¿Imprimir los carnets de los ${docentesTodosMemoria.length} docentes registrados?`)) return;
+    if (!confirm(`¿Imprimir carnets de ${docentesTodosMemoria.length} docentes?`)) return;
 
-    const lista = [...docentesTodosMemoria].sort((a, b) => (a.apellidos || '').localeCompare(b.apellidos || ''));
-    const ventana = window.open('', '', 'height=800,width=1000');
+    const lista = [...docentesTodosMemoria].sort((a, b) => (a.apellidos||'').localeCompare(b.apellidos||''));
+    const ventana = window.open('', '', 'width=1000,height=800');
 
-    let contenidoCarnets = '';
+    let carnets = '';
     lista.forEach(d => {
-        const condicionColor = d.condicion === 'NOMBRADO' ? '#15803d' : '#1d4ed8';
-        const condicionBg    = d.condicion === 'NOMBRADO' ? '#dcfce7' : '#dbeafe';
-        
-        contenidoCarnets += `
-            <div class="carnet">
+        carnets += `
+        <div class="carnet">
+            <div class="franja-lateral"></div>
+            <div class="contenido">
                 <div class="cabecera">
-                    <img src="logo_colegio.jpeg" class="logo-img">
-                    <div class="cabecera-centro">
-                        <div class="cabecera-ie">I.E. HORACIO ZEVALLOS GÁMEZ</div>
-                        <div class="cabecera-sede">MALINGAS · TAMBOGRANDE</div>
-                    </div>
-                    <div class="badge-tipo">DOCENTE</div>
-                </div>
-                
-                <div class="cuerpo">
-                    <div class="seccion-qr">
-                        <div class="qr-wrapper">
-                            <div class="qr-code" data-dni="${d.dni}" data-nombres="${d.nombres}" data-apellidos="${d.apellidos}" data-condicion="${d.condicion}"></div>
-                        </div>
-                        <span class="qr-hint">ID DIGITAL</span>
-                    </div>
-
-                    <div class="seccion-info">
-                        <div class="info-grupo">
-                            <label>APELLIDOS</label>
-                            <div class="valor-principal">${(d.apellidos||'').toUpperCase()}</div>
-                        </div>
-                        <div class="info-grupo">
-                            <label>NOMBRES</label>
-                            <div class="valor-secundario">${(d.nombres||'').toUpperCase()}</div>
-                        </div>
-                        
-                        <div class="info-meta">
-                            <div class="dni-tag">DNI ${d.dni}</div>
-                            <div class="status-tag" style="background:${condicionBg}; color:${condicionColor}; border: 1px solid ${condicionColor}55;">
-                                ${d.condicion}
-                            </div>
-                        </div>
+                    <img src="logo_colegio.jpeg" class="logo">
+                    <div class="cab-texto">
+                        <div class="cab-ie">I.E. Horacio Zevallos Gámez</div>
+                        <div class="cab-titulo">Carnet Docente</div>
+                        <div class="cab-sede">Malingas · Tambogrande</div>
                     </div>
                 </div>
-
-                <div class="footer">
-                    <div class="lema">DISCIPLINA · LEALTAD · HONRADEZ</div>
-                    <div class="periodo">2026</div>
+                <div class="foto-box">
+<div style="width:28px;height:34px;border:1.5px dashed #86efac;border-radius:3px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:white;">
+                        <svg width="12" height="12" fill="none" stroke="#86efac" stroke-width="1.5" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </div>
+                                        <span class="foto-label">FOTO</span>
                 </div>
-            </div>`;
+                <div class="datos">
+                    <div class="campo-label">Apellidos</div>
+                    <div class="apellido">${(d.apellidos||'').toUpperCase()}</div>
+                    <div class="campo-label mt4">Nombres</div>
+                    <div class="nombre">${(d.nombres||'').toUpperCase()}</div>
+                    <div class="dni-box">DNI: ${d.dni}</div>
+                    <div class="qr-area">
+                        <div class="qr-code" data-val="DOCENTE|${d.dni}|${(d.apellidos||'')}|${(d.nombres||'')}"></div>
+                        <div class="qr-label">ID Digital</div>
+                    </div>
+                </div>
+                <div class="pie">Disciplina · Lealtad · Honradez</div>
+            </div>
+        </div>`;
     });
 
-    ventana.document.write(`
-        <html>
-        <head>
-            <style>
-                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
-                
-                @page { size: A4; margin: 1cm; }
-                
-                body { 
-                    font-family: 'Inter', sans-serif; 
-                    margin: 0; padding: 0; background: #f4f4f4; 
-                }
+    ventana.document.write(`<!DOCTYPE html><html><head>
+    <title>Carnets Docentes - I.E. HZG</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap');
+        @page { size: A4; margin: 0.5cm; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Roboto', sans-serif; background: white; }
 
-                .contenedor-impresion {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 15px;
-                    padding: 10px;
-                    justify-content: center;
-                }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 5px;
+            justify-items: center;
+        }
 
-                .carnet {
-                    width: 8.6cm;
-                    height: 5.4cm;
-                    background: white;
-                    border-radius: 12px;
-                    overflow: hidden;
-                    border: 1px solid #e2e8f0;
-                    position: relative;
-                    display: flex;
-                    flex-direction: column;
-                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-                    page-break-inside: avoid;
-                }
+        /* Cada carnet es horizontal: franja lateral + contenido */
+        .carnet {
+            width: 3.8cm;
+            border: 1.5px solid #15803d;
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: row;
+            page-break-inside: avoid;
+            background: white;
+        }
 
-                /* Cabecera */
-                .cabecera {
-                    background: #15803d;
-                    padding: 8px 12px;
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                    color: white;
-                }
+        /* Franja lateral izquierda */
+        .franja-lateral {
+            width: 6px;
+            flex-shrink: 0;
+            background: linear-gradient(180deg, #166534, #4ade80, #166534);
+        }
 
-                .logo-img {
-                    width: 32px; height: 32px;
-                    border-radius: 6px;
-                    background: white;
-                    padding: 2px;
-                    object-fit: contain;
-                }
+        /* Todo el lado derecho */
+        .contenido {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
 
-                .cabecera-centro { flex: 1; }
-                .cabecera-ie { font-size: 8px; font-weight: 800; letter-spacing: 0.5px; }
-                .cabecera-sede { font-size: 6px; opacity: 0.9; }
+        /* Cabecera verde */
+        .cabecera {
+            background: #15803d;
+            padding: 4px 5px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            color: white;
+        }
 
-                .badge-tipo {
-                    font-size: 7px;
-                    font-weight: 800;
-                    background: rgba(255,255,255,0.2);
-                    padding: 2px 6px;
-                    border-radius: 4px;
-                    border: 1px solid rgba(255,255,255,0.3);
-                }
+        .logo {
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.8);
+            object-fit: cover;
+            flex-shrink: 0;
+        }
 
-                /* Cuerpo */
-                .cuerpo {
-                    flex: 1;
-                    display: flex;
-                    padding: 12px;
-                    gap: 12px;
-                    align-items: center;
-                }
+        .cab-texto { line-height: 1.2; }
+        .cab-ie    { font-size: 4px;   font-weight: 700; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.04em; }
+        .cab-titulo{ font-size: 6.5px; font-weight: 900; text-transform: uppercase; }
+        .cab-sede  { font-size: 3.5px; opacity: 0.7; }
 
-                .seccion-qr {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: 4px;
-                }
+        /* Caja de foto */
+        .foto-box {
+            width: 100%;
+            padding: 5px 0 4px;
+            background: #f0fdf4;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
 
-                .qr-wrapper {
-                    padding: 4px;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 8px;
-                    background: #fff;
-                }
+        .foto-label {
+            font-size: 5px;
+            font-weight: 700;
+            color: #86efac;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+        }
 
-                .qr-hint { font-size: 5px; font-weight: 700; color: #94a3b8; }
+        /* Datos */
+        .datos {
+            padding: 4px 5px;
+            display: flex;
+            flex-direction: column;
+            gap: 0px;
+            flex: 1;
+        }
 
-                .seccion-info {
-                    flex: 1;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 6px;
-                }
+        .campo-label {
+            font-size: 4.5px;
+            color: #94a3b8;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
 
-                .info-grupo label {
-                    display: block;
-                    font-size: 6px;
-                    font-weight: 700;
-                    color: #64748b;
-                    margin-bottom: 1px;
-                }
+        .mt4 { margin-top: 3px; }
 
-                .valor-principal {
-                    font-size: 13px;
-                    font-weight: 800;
-                    color: #1e293b;
-                    line-height: 1;
-                }
+        .apellido {
+            font-size: 8px;
+            font-weight: 900;
+            color: #0f172a;
+            text-transform: uppercase;
+            line-height: 1.1;
+            word-break: break-word;
+        }
 
-                .valor-secundario {
-                    font-size: 10px;
-                    font-weight: 600;
-                    color: #475569;
-                }
+        .nombre {
+            font-size: 6px;
+            font-weight: 700;
+            color: #334155;
+            text-transform: uppercase;
+            line-height: 1.1;
+            word-break: break-word;
+        }
 
-                .info-meta {
-                    display: flex;
-                    gap: 6px;
-                    margin-top: 4px;
-                    align-items: center;
-                }
+        .dni-box {
+            margin-top: 3px;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: 3px;
+            padding: 2px 4px;
+            font-size: 5.5px;
+            font-weight: 800;
+            color: #475569;
+            font-family: monospace;
+            text-align: center;
+        }
 
-                .dni-tag {
-                    font-size: 8px;
-                    font-weight: 700;
-                    color: #1e293b;
-                    background: #f1f5f9;
-                    padding: 2px 6px;
-                    border-radius: 4px;
-                }
+        .qr-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1px;
+            margin-top: 4px;
+        }
 
-                .status-tag {
-                    font-size: 7px;
-                    font-weight: 800;
-                    padding: 2px 6px;
-                    border-radius: 4px;
-                    text-transform: uppercase;
-                }
+        .qr-code {
+            width: 40px; height: 40px;
+            border: 1px solid #e2e8f0;
+            border-radius: 3px;
+            padding: 2px;
+            background: white;
+        }
+        .qr-code img, .qr-code canvas { width: 36px !important; height: 36px !important; }
 
-                /* Footer */
-                .footer {
-                    background: #f8fafc;
-                    border-top: 1px solid #f1f5f9;
-                    padding: 4px 12px;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                }
+        .qr-label {
+            font-size: 4px;
+            color: #94a3b8;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
 
-                .lema { font-size: 6px; font-weight: 700; color: #15803d; letter-spacing: 1px; }
-                .periodo { font-size: 7px; font-weight: 800; color: #94a3b8; }
+        .pie {
+            background: linear-gradient(90deg, #f0fdf4, #dcfce7, #f0fdf4);
+            border-top: 1px solid #bbf7d0;
+            text-align: center;
+            font-size: 4.5px;
+            color: #15803d;
+            font-weight: 900;
+            padding: 2px 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+        }
 
-                @media print {
-                    body { background: white; }
-                    .carnet { 
-                        box-shadow: none; 
-                        -webkit-print-color-adjust: exact; 
-                        print-color-adjust: exact; 
-                    }
-                    .contenedor-impresion { padding: 0; gap: 10px; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="contenedor-impresion">${contenidoCarnets}</div>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
-            <script>
-                document.querySelectorAll('.qr-code').forEach(div => {
-                    new QRCode(div, {
-                        text: 'DOCENTE|' + div.getAttribute('data-dni') + '|' + div.getAttribute('data-apellidos'),
-                        width: 60,
-                        height: 60,
-                        colorDark: "#000000",
-                        colorLight: "#ffffff",
-                        correctLevel: QRCode.CorrectLevel.M
-                    });
-                });
-                setTimeout(() => { window.print(); window.close(); }, 1000);
-            <\/script>
-        </body>
-        </html>
-    `);
+        @media print {
+            .carnet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+    </head><body>
+    <div class="grid">${carnets}</div>
+    <script>
+        document.querySelectorAll('.qr-code').forEach(div => {
+            new QRCode(div, {
+                text: div.getAttribute('data-val'),
+                width: 36, height: 36,
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        });
+        setTimeout(() => { window.print(); window.close(); }, 1000);
+    <\/script>
+    </body></html>`);
     ventana.document.close();
 };
 // =========================================================
@@ -2535,6 +2610,7 @@ window.cargarAsistenciaDocentesDelDia = (fechaManual = null) => {
                         else if (est.includes('TARDANZA')) colorEstado = 'bg-yellow-100 text-yellow-700 border-yellow-200';
                         else if (est.includes('SALIDA')) colorEstado = 'bg-blue-100 text-blue-700 border-blue-200';
                         else if (est.includes('JUSTIFICAD')) colorEstado = 'bg-indigo-100 text-indigo-700 border-indigo-200';
+                        else if (est.includes('EVENTO')) colorEstado = 'bg-purple-100 text-purple-700 border-purple-200';
 
                         return `<tr class="border-b last:border-0 hover:bg-slate-50 transition">
                             <td class="p-3 font-bold text-green-700 text-sm">
@@ -2552,6 +2628,10 @@ window.cargarAsistenciaDocentesDelDia = (fechaManual = null) => {
                                 <span class="px-2 py-1 rounded-full text-[10px] font-black border ${colorEstado}">
                                     ${est || 'FALTÓ'}
                                 </span>
+                                ${est.includes('EVENTO') && reg.horaEvento ? `
+                                <div class="text-[9px] text-purple-600 font-bold mt-1">
+                                    Hora: ${reg.horaEvento}
+                                </div>` : ''}
                             </td>
                             <td class="p-3 text-center">
                                 <button onclick="window.cambiarEstadoDocente('${reg.dni}', '${reg.nombres} ${reg.apellidos}', '${hoy}')"
@@ -2573,9 +2653,10 @@ window.cargarAsistenciaDocentesDelDia = (fechaManual = null) => {
             const e = (r.estado || '').toUpperCase();
             return e === '' || e.includes('FALTA');
         }).length;
+        const eventos = registros.filter(r => (r.estado || '').toUpperCase().includes('EVENTO')).length;
 
         const resumen = document.createElement('div');
-        resumen.className = "mt-4 grid grid-cols-4 gap-3";
+        resumen.className = "mt-4 grid grid-cols-5 gap-3";
         resumen.innerHTML = `
             <div class="bg-slate-50 rounded-xl p-3 text-center border">
                 <p class="text-xs font-black text-slate-500 uppercase">Total</p>
@@ -2592,6 +2673,10 @@ window.cargarAsistenciaDocentesDelDia = (fechaManual = null) => {
             <div class="bg-red-50 rounded-xl p-3 text-center border border-red-100">
                 <p class="text-xs font-black text-red-600 uppercase">Faltas</p>
                 <p class="text-2xl font-black text-red-700">${faltas}</p>
+            </div>
+            <div class="bg-purple-50 rounded-xl p-3 text-center border border-purple-100">
+                <p class="text-xs font-black text-purple-600 uppercase">Evento/Reunión</p>
+                <p class="text-2xl font-black text-purple-700">${eventos}</p>
             </div>`;
         contenedor.appendChild(resumen);
     });
@@ -2611,27 +2696,47 @@ window.registrarAsistenciaDocenteManual = async () => {
     if (isNaN(idx) || idx < 0 || idx >= lista.length) return alert("Selección inválida.");
 
     const docente = lista[idx];
-    const estadoSel = prompt(`Estado para ${docente.apellidos} ${docente.nombres}:\n1. Puntual\n2. Tardanza\n3. Tardanza Justificada\n4. Falta Justificada\n5. Falta`, "1");
-    const estados = { "1": "Puntual", "2": "Tardanza", "3": "Tardanza Justificada", "4": "Falta Justificada", "5": "Falta" };
+    const estadoSel = prompt(`Estado para ${docente.apellidos} ${docente.nombres}:\n1. Puntual\n2. Tardanza\n3. Tardanza Justificada\n4. Falta Justificada\n5. Falta\n6. Evento/Reunión`, "1");
+    const estados = { "1": "Puntual", "2": "Tardanza", "3": "Tardanza Justificada", "4": "Falta Justificada", "5": "Falta", "6": "Evento/Reunión" };
     const estado = estados[estadoSel];
     if (!estado) return;
 
     const hora = new Date().toLocaleTimeString('es-PE', { hour12: false });
-    await setDoc(doc(db, "asistenciaDocentes", hoy, "registros", docente.dni), {
+
+    let horaEvento = null;
+    if (estadoSel === "6") {
+        horaEvento = prompt(`Ingresa la hora del evento/reunión (ej: 09:00):`, hora);
+        if (!horaEvento) return;
+    }
+
+    const datosReg = {
         dni: docente.dni, nombres: docente.nombres, apellidos: docente.apellidos,
         condicion: docente.condicion, hora, estado, fecha: hoy
-    }, { merge: true });
+    };
+    if (horaEvento) datosReg.horaEvento = horaEvento;
+
+    await setDoc(doc(db, "asistenciaDocentes", hoy, "registros", docente.dni), datosReg, { merge: true });
     alert(`✅ Asistencia registrada para ${docente.apellidos} ${docente.nombres}`);
 };
 
 // --- CAMBIAR ESTADO DOCENTE ---
 window.cambiarEstadoDocente = async (dni, nombre, fecha) => {
-    const n = prompt(`Estado para ${nombre.toUpperCase()}:\n1. Puntual\n2. Tardanza\n3. Tardanza Justificada\n4. Falta Justificada\n5. Falta`, "1");
-    const estados = { "1": "Puntual", "2": "Tardanza", "3": "Tardanza Justificada", "4": "Falta Justificada", "5": "Falta" };
+    const n = prompt(`Estado para ${nombre.toUpperCase()}:\n1. Puntual\n2. Tardanza\n3. Tardanza Justificada\n4. Falta Justificada\n5. Falta\n6. Evento/Reunión`, "1");
+    const estados = { "1": "Puntual", "2": "Tardanza", "3": "Tardanza Justificada", "4": "Falta Justificada", "5": "Falta", "6": "Evento/Reunión" };
     const estado = estados[n];
     if (!estado) return;
     const hora = new Date().toLocaleTimeString('es-PE', { hour12: false });
-    await setDoc(doc(db, "asistenciaDocentes", fecha, "registros", dni), { estado, hora }, { merge: true });
+
+    let horaEvento = null;
+    if (n === "6") {
+        horaEvento = prompt(`Ingresa la hora del evento/reunión (ej: 09:00):`, hora);
+        if (!horaEvento) return;
+    }
+
+    const datos = { estado, hora };
+    if (horaEvento) datos.horaEvento = horaEvento;
+
+    await setDoc(doc(db, "asistenciaDocentes", fecha, "registros", dni), datos, { merge: true });
 };
 
 // --- CERRAR DÍA DOCENTES ---
@@ -2843,7 +2948,8 @@ window.generarReporteMensualDocentes = async () => {
     let thHTML = `<tr>
         <th class="sticky left-0 z-30 bg-green-800 px-2 py-2 text-center border border-green-600 text-[10px]">N°</th>
         <th class="sticky bg-green-800 px-2 py-2 text-left border border-green-600 text-[10px]" style="left:30px;min-width:180px">DOCENTE</th>
-        <th class="bg-green-800 px-2 py-2 text-center border border-green-600 text-[10px]">COND.</th>`;
+        <th class="bg-green-800 px-2 py-2 text-center border border-green-600 text-[10px]">ENTRADA</th>
+        <th class="bg-green-800 px-2 py-2 text-center border border-green-600 text-[10px]">SALIDA</th>`;
     fechas.forEach(f => {
         const esFS = f.diaSemana === 0 || f.diaSemana === 6;
         const esFer = feriadosSet.has(f.fecha);
@@ -2869,8 +2975,17 @@ window.generarReporteMensualDocentes = async () => {
                 <div class="font-black text-slate-700">${doc.apellidos||''}</div>
                 <div class="text-slate-400">${doc.nombres||''}</div>
             </td>
-            <td class="border border-slate-200 text-[9px] text-center font-bold" style="padding:2px 4px">
-                <span style="color:${doc.condicion==='NOMBRADO'?'#15803d':'#1d4ed8'}">${doc.condicion||'-'}</span>
+            <td class="border border-slate-200 text-[9px] text-center font-bold" style="padding:2px 4px;color:#15803d">
+                ${(() => {
+                    const entradas = Object.values(doc.diasReg||{}).map(r=>r.horaEntrada||r.hora||'').filter(Boolean).sort();
+                    return entradas.length ? entradas[Math.floor(entradas.length/2)] : '--:--';
+                })()}
+            </td>
+            <td class="border border-slate-200 text-[9px] text-center font-bold" style="padding:2px 4px;color:#1d4ed8">
+                ${(() => {
+                    const salidas = Object.values(doc.diasReg||{}).map(r=>r.horaSalida||'').filter(Boolean).sort();
+                    return salidas.length ? salidas[Math.floor(salidas.length/2)] : '--:--';
+                })()}
             </td>`;
         fechas.forEach(f => {
             const esFS = f.diaSemana === 0 || f.diaSemana === 6;
@@ -2912,7 +3027,7 @@ window.generarReporteMensualDocentes = async () => {
     const sumF = lista.reduce((s,d)=>s+d.faltas,0);
     const sumJ = lista.reduce((s,d)=>s+d.justificados,0);
     let totCeldas = `
-        <td colspan="3" style="position:sticky;left:0;z-index:10;background:#dcfce7;padding:4px 8px;border:1px solid #86efac;font-size:11px;font-weight:900;color:#166534;text-transform:uppercase;">
+        <td colspan="4" style="position:sticky;left:0;z-index:10;background:#dcfce7;padding:4px 8px;border:1px solid #86efac;font-size:11px;font-weight:900;color:#166534;text-transform:uppercase;">
             TOTALES GENERALES
         </td>`;
     fechas.forEach((f, fi) => {
@@ -2961,7 +3076,11 @@ window.descargarReporteMensualDocentesExcel = () => {
     const DS = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
 
     const filas = data.map((d, i) => {
-        const row = { "N°": i+1, "APELLIDOS": d.apellidos||'', "NOMBRES": d.nombres||'', "DNI": d.dni||'', "CONDICIÓN": d.condicion||'' };
+        const entradasMes = Object.values(d.diasReg||{}).map(r=>r.horaEntrada||r.hora||'').filter(Boolean).sort();
+        const salidasMes  = Object.values(d.diasReg||{}).map(r=>r.horaSalida||'').filter(Boolean).sort();
+        const entPromedio = entradasMes.length ? entradasMes[Math.floor(entradasMes.length/2)] : '--:--';
+        const salPromedio = salidasMes.length  ? salidasMes[Math.floor(salidasMes.length/2)]   : '--:--';
+        const row = { "N°": i+1, "APELLIDOS": d.apellidos||'', "NOMBRES": d.nombres||'', "DNI": d.dni||'', "ENTRADA PROM.": entPromedio, "SALIDA PROM.": salPromedio };
         fechas.forEach(f => {
             const colKey = `${DS[f.diaSemana]} ${f.dia}`;
             if (f.diaSemana===0||f.diaSemana===6) { row[colKey]=''; return; }
