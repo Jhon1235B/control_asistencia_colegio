@@ -395,13 +395,35 @@ window._crearTablaAula = (titulo, lista, hoy) => {
 // Función auxiliar para dar un respiro a la API
 const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// --- DESCARGAR PLANTILLA EXCEL PARA CARGA MASIVA ---
+window.descargarPlantillaMasiva = () => {
+    const encabezados = [["DNI", "NOMBRE_ESTUDIANTE", "GRADO", "SECCION", "NOMBRE_APODERADO", "TELEFONO_APODERADO"]];
+    const ws = XLSX.utils.aoa_to_sheet(encabezados);
+
+    // Estilo del encabezado
+    const cols = ["A1","B1","C1","D1","E1","F1"];
+    cols.forEach(celda => {
+        if (!ws[celda]) return;
+        ws[celda].s = {
+            fill: { fgColor: { rgb: "15803D" } },
+            font: { color: { rgb: "FFFFFF" }, bold: true },
+            alignment: { horizontal: "center" }
+        };
+    });
+    ws['!cols'] = [
+        { wch: 12 }, { wch: 35 }, { wch: 8 },
+        { wch: 10 }, { wch: 35 }, { wch: 18 }
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Alumnos");
+    XLSX.writeFile(wb, "Plantilla_Carga_Masiva_Alumnos.xlsx");
+};
+
 window.escanearYRegistrarMasivo = async () => {
     const fileInput = document.getElementById('fotoMasiva');
     const log = document.getElementById('logRegistro');
     const btn = document.getElementById('btnMasivo');
-    
-    const gradoDefault = document.getElementById('grado').value.trim();
-    const seccionDefault = document.getElementById('seccion').value.trim().toUpperCase();
 
     const archivo = fileInput.files[0];
     if (!archivo) return alert("Selecciona un archivo Excel.");
@@ -413,73 +435,89 @@ window.escanearYRegistrarMasivo = async () => {
     try {
         let estudiantesParaProcesar = [];
 
-        if (archivo.name.endsWith('.xlsx') || archivo.name.endsWith('.xls')) {
-            const data = await archivo.arrayBuffer();
-            const libro = XLSX.read(data, { type: 'array' });
-            const hoja = libro.Sheets[libro.SheetNames[0]];
-            const filasRaw = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: "" });
-            
-            log.innerHTML += "📊 Analizando estructura de datos escolar...<br>";
-
-            estudiantesParaProcesar = filasRaw.map(fila => {
-                const valores = fila.map(v => String(v).trim());
-                return {
-                    dni: valores.find(v => /^\d{8}$/.test(v)),
-                    nombreExcel: valores.find(v => v.length > 10 && !/^\d+$/.test(v)),
-                    telefono: valores.find(v => /^\d{9}$/.test(v)),
-                    grado: valores.find(v => /^[1-5]$/.test(v)) || gradoDefault,
-                    seccion: valores.find(v => /^[A-Fa-f]$/.test(v))?.toUpperCase() || seccionDefault
-                };
-            }).filter(est => est.dni); 
-        } else {
+        if (!archivo.name.endsWith('.xlsx') && !archivo.name.endsWith('.xls')) {
             return alert("Por favor use archivos Excel (.xlsx o .xls).");
+        }
+
+        const data = await archivo.arrayBuffer();
+        const libro = XLSX.read(data, { type: 'array' });
+        const hoja = libro.Sheets[libro.SheetNames[0]];
+
+        // Leer con encabezados automáticos (primera fila = nombres de columna)
+        const filasJson = XLSX.utils.sheet_to_json(hoja, { defval: "" });
+
+        log.innerHTML += "📊 Leyendo columnas del Excel...<br>";
+
+        // Normalizar nombres de columna (mayúsculas, sin espacios extra)
+        const normalizar = (str) => String(str).trim().toUpperCase().replace(/\s+/g, '_');
+
+        estudiantesParaProcesar = filasJson.map(fila => {
+            // Crear objeto con claves normalizadas
+            const f = {};
+            Object.keys(fila).forEach(k => { f[normalizar(k)] = String(fila[k]).trim(); });
+
+            // Mapeo flexible de columnas
+            const dni          = f['DNI'] || f['D.N.I'] || f['DOCUMENTO'] || '';
+            const nombre       = f['NOMBRE_ESTUDIANTE'] || f['NOMBRES'] || f['NOMBRE'] || f['ALUMNO'] || f['ESTUDIANTE'] || '';
+            const grado        = f['GRADO'] || f['GRADE'] || '';
+            const seccion      = f['SECCION'] || f['SECCIÓN'] || f['SECTION'] || '';
+            const apoderado    = f['NOMBRE_APODERADO'] || f['APODERADO'] || f['PADRE'] || f['TUTOR'] || '';
+            const telefono     = f['TELEFONO_APODERADO'] || f['TELEFONO'] || f['TELÉFONO'] || f['CELULAR'] || f['WHATSAPP'] || '';
+
+            return { dni, nombre, grado, seccion, apoderado, telefono };
+        }).filter(est => /^\d{8}$/.test(est.dni)); // Solo filas con DNI válido de 8 dígitos
+
+        if (estudiantesParaProcesar.length === 0) {
+            log.innerHTML += `<span class="text-yellow-400">⚠️ No se encontraron filas con DNI válido (8 dígitos).<br>Asegúrate que la primera fila del Excel tenga los encabezados correctos.</span>`;
+            btn.disabled = false;
+            return;
         }
 
         const total = estudiantesParaProcesar.length;
         log.innerHTML += `✅ <b>Total identificado: ${total} alumnos.</b><hr class='border-slate-700 my-2'>`;
 
-        // USAMOS UN BUCLE CON ÍNDICE PARA EL CONTEO
         for (let i = 0; i < total; i++) {
             const est = estudiantesParaProcesar[i];
-            const numActual = i + 1; // El número de alumno actual
+            const numActual = i + 1;
 
-            // Mostramos el conteo en el log: [1 de 50]
-            log.innerHTML += `<span class="text-blue-400">[${numActual}/${total}]</span> 🔍 ${est.dni}... `;
-            
-            let nombreFinal = est.nombreExcel || "PENDIENTE";
+            log.innerHTML += `<span class="text-blue-400">[${numActual}/${total}]</span> 🔍 DNI: ${est.dni} — ${est.nombre || 'Sin nombre'} ... `;
 
-            try {
-                // Delay para no saturar la API (0.6 seg)
-                await new Promise(r => setTimeout(r, 600)); 
-                const apiKey = "sk_14665.dSb1iTSCRxookfSigq90nJUIs4udOhuC"; 
-                const response = await fetch(`https://api.decolecta.com/v1/dni/${est.dni}`, {
-                    method: "GET",
-                    headers: { "Authorization": `Bearer ${apiKey}`, "X-Requested-With": "XMLHttpRequest" }
-                });
-                const res = await response.json();
-                if (res.success && res.data) {
-                    nombreFinal = res.data.nombre_completo || `${res.data.nombres} ${res.data.apellido_paterno} ${res.data.apellido_materno}`;
-                }
-            } catch (e) { console.warn("Usando nombre local para:", est.dni); }
+            let nombreFinal = est.nombre || "PENDIENTE";
 
-            // GUARDADO EN FIREBASE
-            await setDoc(doc(db, "alumnos", String(est.dni)), {
-                dni: String(est.dni),
-                nombres: nombreFinal.toUpperCase(),
-                grado: String(est.grado),
-                seccion: String(est.seccion),
-                telefono: String(est.telefono || ""),
+            // Si no vino nombre en el Excel, intentar API RENIEC
+            if (!est.nombre) {
+                try {
+                    await new Promise(r => setTimeout(r, 600));
+                    const apiKey = "sk_14665.dSb1iTSCRxookfSigq90nJUIs4udOhuC";
+                    const response = await fetch(`https://api.decolecta.com/v1/dni/${est.dni}`, {
+                        method: "GET",
+                        headers: { "Authorization": `Bearer ${apiKey}`, "X-Requested-With": "XMLHttpRequest" }
+                    });
+                    const res = await response.json();
+                    if (res.success && res.data) {
+                        nombreFinal = res.data.nombre_completo || `${res.data.nombres} ${res.data.apellido_paterno} ${res.data.apellido_materno}`;
+                    }
+                } catch (e) { console.warn("Usando nombre local para:", est.dni); }
+            }
+
+            // GUARDADO EN FIREBASE con todos los campos
+            await setDoc(doc(db, "alumnos", est.dni), {
+                dni:       est.dni,
+                nombres:   nombreFinal.toUpperCase(),
+                grado:     est.grado,
+                seccion:   est.seccion.toUpperCase(),
+                apoderado: est.apoderado.toUpperCase(),
+                telefono:  est.telefono,
                 fechaRegistro: new Date().toLocaleDateString()
             }, { merge: true });
 
             log.innerHTML += `<span class="text-green-400">OK ✅</span><br>`;
-            
-            // Auto-scroll para seguir el progreso
             log.scrollTop = log.scrollHeight;
         }
 
-        alert(`✅ Éxito. Se procesaron los ${total} alumnos.`);
-        if(typeof window.cargarBloques === 'function') await window.cargarBloques();
+        log.innerHTML += `<br><span class="text-yellow-300 font-bold">🎉 Proceso completado: ${total} alumnos registrados.</span>`;
+        alert(`✅ Éxito. Se registraron ${total} alumnos.`);
+        if (typeof window.cargarBloques === 'function') await window.cargarBloques();
 
     } catch (e) {
         log.innerHTML += `<br><span class="text-red-500">❌ Error: ${e.message}</span>`;
@@ -2742,26 +2780,40 @@ window.cambiarEstadoDocente = async (dni, nombre, fecha) => {
 // --- CERRAR DÍA DOCENTES ---
 window.cerrarDiaDocentes = async () => {
     const hoy = new Date().toLocaleDateString('en-CA');
-    if (!confirm("¿Finalizar día y marcar como Puntual a los docentes sin registro?")) return;
+    if (!confirm("¿Finalizar día?\n\nLos docentes sin ningún registro serán marcados como FALTA.")) return;
+
     const [snapDoc, snapAsis] = await Promise.all([
         getDocs(collection(db, "docentes")),
         getDocs(collection(db, "asistenciaDocentes", hoy, "registros"))
     ]);
+
     const yaRegistrados = new Set(snapAsis.docs.map(d => d.id));
     const batch = writeBatch(db);
-    let cont = 0;
+    let contFalta = 0;
+
     snapDoc.forEach(d => {
         if (!yaRegistrados.has(d.id)) {
             const dat = d.data();
             batch.set(doc(db, "asistenciaDocentes", hoy, "registros", d.id), {
-                dni: dat.dni, nombres: dat.nombres, apellidos: dat.apellidos,
-                condicion: dat.condicion, hora: "07:45:00", estado: "Puntual", fecha: hoy
+                dni: dat.dni,
+                nombres: dat.nombres,
+                apellidos: dat.apellidos,
+                condicion: dat.condicion,
+                hora: "--:--",
+                estado: "Falta",
+                fecha: hoy
             }, { merge: true });
-            cont++;
+            contFalta++;
         }
     });
+
     await batch.commit();
-    alert(`✅ Se regularizaron ${cont} docentes como Puntual.`);
+
+    if (contFalta === 0) {
+        alert("✅ Todos los docentes ya tienen registro. No se realizaron cambios.");
+    } else {
+        alert(`✅ Día finalizado.\n\n${contFalta} docente(s) marcado(s) como FALTA por no registrar asistencia.`);
+    }
 };
 
 // --- PDF DIARIO DOCENTES ---

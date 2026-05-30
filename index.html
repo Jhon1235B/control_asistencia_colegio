@@ -122,8 +122,22 @@
                         <input type="text" id="nombres" placeholder="Nombres y Apellidos del Estudiante" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
                         <input type="text" id="apoderado" placeholder="Nombre completo del Padre o Apoderado" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
                         <div class="grid grid-cols-2 gap-3">
-                            <input type="text" id="grado" placeholder="Grado (Ej: 5)" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition">
-                            <input type="text" id="seccion" placeholder="Sección (Ej: A)" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition">
+                            <select id="grado" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition bg-white text-slate-700">
+                                <option value="" disabled selected>Grado</option>
+                                <option value="1">1°</option>
+                                <option value="2">2°</option>
+                                <option value="3">3°</option>
+                                <option value="4">4°</option>
+                                <option value="5">5°</option>
+                            </select>
+                            <select id="seccion" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition bg-white text-slate-700">
+                                <option value="" disabled selected>Sección</option>
+                                <option value="A">A</option>
+                                <option value="B">B</option>
+                                <option value="C">C</option>
+                                <option value="D">D</option>
+                                <option value="E">E</option>
+                            </select>
                         </div>
                         <input type="tel" id="telefono" placeholder="WhatsApp del Apoderado" class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-green-600 outline-none transition" required>
                         <button type="submit" class="w-full bg-malingas-green text-white py-4 rounded-xl font-bold hover:bg-green-800 transition shadow-lg uppercase tracking-wider">
@@ -135,15 +149,42 @@
                 <div class="bg-white p-6 rounded-2xl shadow-xl border-2 border-dashed border-blue-200">
                     <div class="flex items-center gap-2 mb-4">
                         <img src="https://cdn-icons-png.flaticon.com/512/732/732220.png" class="h-6 w-6 object-contain" alt="Excel">
-                        <h2 class="text-sm font-black text-blue-700 uppercase tracking-tight">Carga Masiva por excel</h2>
+                        <h2 class="text-sm font-black text-blue-700 uppercase tracking-tight">Carga Masiva por Excel</h2>
                     </div>
                     <div class="space-y-4">
-                        <p class="text-[11px] text-slate-500 font-medium">Sube una archivo de lista del grado para registrar múltiples alumnos automáticamente.</p>
-                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                            <input type="file" id="fotoMasiva" accept="image/*, .xlsx, .xls" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer">
-                            <button onclick="window.escanearYRegistrarMasivo()" id="btnMasivo" class="w-full mt-4 bg-blue-600 text-white py-3 rounded-xl font-black text-xs uppercase hover:bg-blue-800 transition shadow-md">Iniciar registro por excel</button>
+                        <p class="text-[11px] text-slate-500 font-medium">Sube un archivo Excel con las siguientes columnas para registrar múltiples alumnos automáticamente.</p>
+
+                        <!-- Tabla de columnas requeridas -->
+                        <div class="bg-blue-50 rounded-xl border border-blue-100 overflow-hidden">
+                            <table class="w-full text-[10px]">
+                                <thead>
+                                    <tr class="bg-blue-600 text-white font-black uppercase">
+                                        <th class="p-2 text-left">Columna</th>
+                                        <th class="p-2 text-left">Descripción</th>
+                                        <th class="p-2 text-center">Req.</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-slate-600 divide-y divide-blue-100">
+                                    <tr class="bg-white"><td class="p-2 font-mono font-bold text-blue-700">DNI</td><td class="p-2">DNI del estudiante (8 dígitos)</td><td class="p-2 text-center text-red-500 font-bold">✔</td></tr>
+                                    <tr class="bg-blue-50"><td class="p-2 font-mono font-bold text-blue-700">NOMBRE_ESTUDIANTE</td><td class="p-2">Apellidos y nombres completos</td><td class="p-2 text-center text-slate-400">opt.</td></tr>
+                                    <tr class="bg-white"><td class="p-2 font-mono font-bold text-blue-700">GRADO</td><td class="p-2">Grado (ej: 1, 2, 3…)</td><td class="p-2 text-center text-red-500 font-bold">✔</td></tr>
+                                    <tr class="bg-blue-50"><td class="p-2 font-mono font-bold text-blue-700">SECCION</td><td class="p-2">Sección (ej: A, B, C…)</td><td class="p-2 text-center text-red-500 font-bold">✔</td></tr>
+                                    <tr class="bg-white"><td class="p-2 font-mono font-bold text-blue-700">NOMBRE_APODERADO</td><td class="p-2">Nombre completo del apoderado</td><td class="p-2 text-center text-red-500 font-bold">✔</td></tr>
+                                    <tr class="bg-blue-50"><td class="p-2 font-mono font-bold text-blue-700">TELEFONO_APODERADO</td><td class="p-2">Número de WhatsApp del apoderado</td><td class="p-2 text-center text-red-500 font-bold">✔</td></tr>
+                                </tbody>
+                            </table>
                         </div>
-                        <div id="logRegistro" class="hidden h-32 overflow-y-auto bg-slate-900 text-green-400 font-mono text-[10px] p-3 rounded-xl custom-scroll"></div>
+
+                        <!-- Botón descargar plantilla -->
+                        <button onclick="window.descargarPlantillaMasiva()" class="w-full bg-green-100 text-green-800 border border-green-300 py-2 rounded-xl font-black text-xs uppercase hover:bg-green-200 transition flex items-center justify-center gap-2">
+                            📥 Descargar Plantilla Excel
+                        </button>
+
+                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                            <input type="file" id="fotoMasiva" accept=".xlsx, .xls" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer">
+                            <button onclick="window.escanearYRegistrarMasivo()" id="btnMasivo" class="w-full mt-4 bg-blue-600 text-white py-3 rounded-xl font-black text-xs uppercase hover:bg-blue-800 transition shadow-md">📤 Iniciar Registro Masivo</button>
+                        </div>
+                        <div id="logRegistro" class="hidden h-40 overflow-y-auto bg-slate-900 text-green-400 font-mono text-[10px] p-3 rounded-xl custom-scroll"></div>
                     </div>
                 </div>
             </div>
