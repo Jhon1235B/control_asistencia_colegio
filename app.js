@@ -1361,36 +1361,27 @@ window.generarReportePDF = async () => {
     const { jsPDF } = window.jspdf;
     const docPDF = new jsPDF();
     const hoyId = new Date().toLocaleDateString('en-CA');
-    
-    // 1. CARGA MASIVA: Traemos asistencia y alumnos en paralelo para máxima velocidad
+
+    // 1. CARGA MASIVA: Traemos asistencia y alumnos en paralelo
     const [snapAsistencia, snapAlumnos] = await Promise.all([
         getDocs(collection(db, "asistencia", hoyId, "registros")),
         getDocs(collection(db, "alumnos"))
     ]);
-    
-    if(snapAsistencia.empty) return alert("No hay datos para exportar hoy.");
 
-    // 2. MAPEO INSTANTÁNEO: Diccionario de alumnos para evitar 750 getDoc()
+    if (snapAsistencia.empty) return alert("No hay datos para exportar hoy.");
+
+    // 2. Diccionario de alumnos
     const mapaAlumnos = {};
-    snapAlumnos.forEach(docAlu => {
-        mapaAlumnos[docAlu.id] = docAlu.data();
-    });
+    snapAlumnos.forEach(docAlu => { mapaAlumnos[docAlu.id] = docAlu.data(); });
 
-    const datosPorGrado = {};
-
-    // 3. PROCESAMIENTO DE DATOS
+    // 3. PROCESAMIENTO → lista unificada ordenada por grado/sección luego por nombre
+    const filas = [];
     snapAsistencia.forEach(d => {
         const dataAsis = d.data();
         const aluInfo = mapaAlumnos[d.id] || {};
-        
-        // Obtenemos grado y sección desde la base de datos de alumnos
-        const gradoSec = aluInfo.grado && aluInfo.seccion 
+        const gradoSec = aluInfo.grado && aluInfo.seccion
             ? `${aluInfo.grado}° "${aluInfo.seccion}"`.toUpperCase()
             : "N/A";
-
-        if (!datosPorGrado[gradoSec]) datosPorGrado[gradoSec] = [];
-        
-        // CONSOLIDACIÓN DE INCIDENCIAS SIN EMOJIS
         const incidencias = [
             dataAsis.alertaSalud || "",
             dataAsis.alertaConducta || "",
@@ -1399,55 +1390,84 @@ window.generarReportePDF = async () => {
             (dataAsis.conductaAlerta || "").replace("⚠️ ", "")
         ].filter(x => x !== "").map(x => x.toUpperCase());
 
-        const todasObservaciones = incidencias.join(", ");
-
-        datosPorGrado[gradoSec].push([
-            dataAsis.hora || '--:--', 
-            d.id, 
-            dataAsis.nombres?.toUpperCase() || "DESCONOCIDO", 
-            gradoSec, 
-            dataAsis.estado?.toUpperCase() || "FALTÓ",
-            todasObservaciones
-        ]);
+        filas.push({
+            gradoSec,
+            nombre: dataAsis.nombres?.toUpperCase() || "DESCONOCIDO",
+            fila: [
+                dataAsis.hora || '--:--',
+                d.id,
+                dataAsis.nombres?.toUpperCase() || "DESCONOCIDO",
+                gradoSec,
+                dataAsis.estado?.toUpperCase() || "FALTÓ",
+                incidencias.join(", ")
+            ]
+        });
     });
 
-    const grados = Object.keys(datosPorGrado).sort();
-    
-    // 4. GENERACIÓN DE PÁGINAS DEL PDF
-    grados.forEach((grado, index) => {
-        if (index > 0) docPDF.addPage();
+    // Ordenar: primero por grado/sección, luego por nombre
+    filas.sort((a, b) => a.gradoSec.localeCompare(b.gradoSec) || a.nombre.localeCompare(b.nombre));
 
-        // Encabezado Institucional HZG
-        docPDF.setTextColor(21, 128, 61); 
-        docPDF.setFontSize(16);
-        docPDF.setFont("helvetica", "bold");
-        docPDF.text("I.E. HORACIO ZEVALLOS GÁMEZ", 14, 20);
-        
-        docPDF.setFontSize(10);
-        docPDF.setTextColor(100);
-        docPDF.text(`MALINGAS - TAMBOGRANDE | REPORTE DE ASISTENCIA`, 14, 25);
-        
-        docPDF.setDrawColor(21, 128, 61);
-        docPDF.line(14, 27, 196, 27);
+    // 4. Numerar y construir array para autoTable
+    const tableBody = filas.map((item, idx) => [idx + 1, ...item.fila]);
 
-        docPDF.setTextColor(0);
-        docPDF.setFontSize(12);
-        docPDF.text(`FECHA: ${hoyId}`, 14, 35);
-        docPDF.text(`GRADO Y SECCIÓN: ${grado}`, 14, 42);
+    // 5. ENCABEZADO INSTITUCIONAL (una sola página o las que autoTable necesite)
+    docPDF.setTextColor(21, 128, 61);
+    docPDF.setFontSize(16);
+    docPDF.setFont("helvetica", "bold");
+    docPDF.text("I.E. HORACIO ZEVALLOS GÁMEZ", 14, 18);
 
-        // Tabla de datos
-        docPDF.autoTable({ 
-            startY: 48, 
-            head: [['HORA', 'DNI', 'ESTUDIANTE', 'G/S', 'ESTADO', 'OBSERVACIONES']], 
-            body: datosPorGrado[grado], 
-            headStyles: { fillColor: [21, 128, 61], textColor: [255, 255, 255], fontStyle: 'bold' },
-            styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
-            columnStyles: {
-                2: { cellWidth: 50 }, // Estudiante
-                5: { cellWidth: 55, textColor: [180, 0, 0], fontStyle: 'bold' } // Observaciones en rojo
-            },
-            alternateRowStyles: { fillColor: [240, 253, 244] }
-        });
+    docPDF.setFontSize(10);
+    docPDF.setTextColor(100);
+    docPDF.text("MALINGAS - TAMBOGRANDE  |  REPORTE DIARIO DE ASISTENCIA", 14, 24);
+
+    docPDF.setDrawColor(21, 128, 61);
+    docPDF.line(14, 26, 196, 26);
+
+    docPDF.setTextColor(0);
+    docPDF.setFontSize(11);
+    docPDF.text(`FECHA: ${hoyId}`, 14, 33);
+    docPDF.setFontSize(9);
+    docPDF.setTextColor(80);
+    docPDF.text(`Total registros: ${filas.length}`, 14, 39);
+
+    // 6. TABLA ÚNICA con todos los grados
+    docPDF.autoTable({
+        startY: 43,
+        head: [['N°', 'HORA', 'DNI', 'ESTUDIANTE', 'GRADO/SEC', 'ESTADO', 'OBSERVACIONES']],
+        body: tableBody,
+        headStyles: { fillColor: [21, 128, 61], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        styles: { fontSize: 6.5, cellPadding: 2, overflow: 'linebreak', valign: 'middle' },
+        columnStyles: {
+            0: { cellWidth: 8, halign: 'center' },   // N°
+            1: { cellWidth: 16, halign: 'center' },  // Hora
+            2: { cellWidth: 20, halign: 'center' },  // DNI
+            3: { cellWidth: 52 },                    // Estudiante
+            4: { cellWidth: 22, halign: 'center' },  // Grado/Sec
+            5: { cellWidth: 22, halign: 'center' },  // Estado
+            6: { cellWidth: 'auto', textColor: [180, 0, 0], fontStyle: 'bold' } // Observaciones
+        },
+        alternateRowStyles: { fillColor: [240, 253, 244] },
+        // Resaltar cambio de grado con fondo sutil
+        willDrawCell: (data) => {
+            if (data.section === 'body' && data.column.index === 4) {
+                const gradoActual = tableBody[data.row.index]?.[4];
+                const gradoAnterior = data.row.index > 0 ? tableBody[data.row.index - 1]?.[4] : null;
+                if (gradoActual !== gradoAnterior) {
+                    data.cell.styles.fontStyle = 'bold';
+                    data.cell.styles.textColor = [21, 128, 61];
+                }
+            }
+        },
+        // Encabezado institucional en páginas adicionales
+        didDrawPage: (data) => {
+            if (data.pageNumber > 1) {
+                docPDF.setFontSize(8);
+                docPDF.setTextColor(100);
+                docPDF.text(`I.E. HORACIO ZEVALLOS GÁMEZ  |  Reporte Diario ${hoyId}  |  Página ${data.pageNumber}`, 14, 10);
+                docPDF.setDrawColor(200);
+                docPDF.line(14, 12, 196, 12);
+            }
+        }
     });
 
     docPDF.save(`Reporte_HZG_${hoyId}.pdf`);
@@ -1456,32 +1476,28 @@ window.generarReportePDF = async () => {
 // --- 5. EXPORTACIÓN EXCEL ---
 window.generarReporteExcel = async () => {
     const hoyId = new Date().toLocaleDateString('en-CA');
-    
-    // 1. Obtener todos los datos en paralelo (solo 2 peticiones a Firebase en total)
+
+    // 1. Obtener todos los datos en paralelo
     const [snapAsistencia, snapAlumnos] = await Promise.all([
         getDocs(collection(db, "asistencia", hoyId, "registros")),
         getDocs(collection(db, "alumnos"))
     ]);
-    
+
     if (snapAsistencia.empty) return alert("No hay datos para exportar hoy.");
 
-    // 2. Crear un mapa de búsqueda instantánea para los nombres de apoderados
+    // 2. Mapa de alumnos
     const mapaAlumnos = {};
-    snapAlumnos.forEach(docAlu => {
-        mapaAlumnos[docAlu.id] = docAlu.data();
-    });
+    snapAlumnos.forEach(docAlu => { mapaAlumnos[docAlu.id] = docAlu.data(); });
 
-    const datosPorGrado = {};
-
-    // 3. Procesar los 750 registros en memoria (esto es instantáneo)
+    // 3. Procesar → lista unificada
+    const filas = [];
     snapAsistencia.forEach(d => {
         const data = d.data();
         const aluInfo = mapaAlumnos[d.id] || {};
-        const gradoSec = `${aluInfo.grado || data.grado || '?'}${aluInfo.seccion || data.seccion || '?'}`.toUpperCase();
+        const gradoNum  = aluInfo.grado  || data.grado  || '?';
+        const seccionLe = aluInfo.seccion || data.seccion || '?';
+        const gradoSec  = `${gradoNum}° "${String(seccionLe).toUpperCase()}"`;
 
-        if (!datosPorGrado[gradoSec]) datosPorGrado[gradoSec] = [];
-        
-        // Consolidación de incidencias
         const incidencias = [
             data.alertaSalud || "",
             data.alertaConducta || "",
@@ -1490,38 +1506,56 @@ window.generarReporteExcel = async () => {
             (data.conductaAlerta || "").replace("⚠️ ", "")
         ].filter(x => x !== "").map(x => x.toUpperCase());
 
-        datosPorGrado[gradoSec].push({
-            "HORA": data.hora || '--:--',
-            "DNI": d.id,
-            "ESTUDIANTE": data.nombres?.toUpperCase() || "DESCONOCIDO",
-            "G/S": gradoSec,
-            "ESTADO": data.estado?.toUpperCase() || "FALTÓ",
-            "OBSERVACIONES": incidencias.join(", ")
+        filas.push({
+            gradoSec,
+            nombre: (data.nombres || "DESCONOCIDO").toUpperCase(),
+            row: {
+                "GRADO/SEC":      gradoSec,
+                "HORA":           data.hora || '--:--',
+                "DNI":            d.id,
+                "ESTUDIANTE":     (data.nombres || "DESCONOCIDO").toUpperCase(),
+                "ESTADO":         (data.estado  || "FALTÓ").toUpperCase(),
+                "OBSERVACIONES":  incidencias.join(", ")
+            }
         });
     });
 
-    // 4. Crear el libro de Excel
+    // Ordenar: grado/sección → nombre
+    filas.sort((a, b) => a.gradoSec.localeCompare(b.gradoSec) || a.nombre.localeCompare(b.nombre));
+
+    // Agregar N° correlativo
+    const dataExcel = filas.map((item, idx) => ({ "N°": idx + 1, ...item.row }));
+
+    // 4. Crear libro con UNA SOLA hoja
+    const ws = XLSX.utils.json_to_sheet(dataExcel);
+
+    // Ancho de columnas
+    ws['!cols'] = [
+        { wch: 5 },  // N°
+        { wch: 14 }, // GRADO/SEC
+        { wch: 10 }, // HORA
+        { wch: 13 }, // DNI
+        { wch: 45 }, // ESTUDIANTE
+        { wch: 16 }, // ESTADO
+        { wch: 55 }  // OBSERVACIONES
+    ];
+
+    // Estilo encabezado
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cell = XLSX.utils.encode_cell({ r: 0, c: C });
+        if (!ws[cell]) continue;
+        ws[cell].s = {
+            fill: { fgColor: { rgb: "15803D" } },
+            font: { color: { rgb: "FFFFFF" }, bold: true },
+            alignment: { horizontal: "center" }
+        };
+    }
+
     const wb = XLSX.utils.book_new();
-    Object.keys(datosPorGrado).sort().forEach(grado => {
-        const ws = XLSX.utils.json_to_sheet(datosPorGrado[grado]);
-        
-        // Estilos institucionales
-        const range = XLSX.utils.decode_range(ws['!ref']);
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-            const cell = XLSX.utils.encode_cell({ r: 0, c: C });
-            if (!ws[cell]) continue;
-            ws[cell].s = {
-                fill: { fgColor: { rgb: "15803D" } },
-                font: { color: { rgb: "FFFFFF" }, bold: true },
-                alignment: { horizontal: "center" }
-            };
-        }
+    XLSX.utils.book_append_sheet(wb, ws, "Asistencia del Día");
 
-        ws['!cols'] = [{ wch: 10 }, { wch: 12 }, { wch: 45 }, { wch: 8 }, { wch: 15 }, { wch: 50 }];
-        XLSX.utils.book_append_sheet(wb, ws, `GRADO ${grado}`);
-    });
-
-    // 5. Descarga final
+    // 5. Descarga
     XLSX.writeFile(wb, `Reporte_HZG_${hoyId}.xlsx`);
 };
 
@@ -1973,6 +2007,16 @@ const n = prompt(`Cambiar estado para ${nombre.toUpperCase()}:\n1. Puntual\n2. T
             await setDoc(doc(db, "alumnos", dni, "conducta", idConducta), {
                 fecha: hoy, hora: horaActual, incidencia: "Conducta Inadecuada/Infraccion", nombres: nombre.toUpperCase()
             });
+        }
+
+        const regActual = await getDoc(doc(db, "asistencia", hoy, "registros", dni));
+        if (regActual.exists()) {
+            const horaOriginal = regActual.data().hora;
+            if (horaOriginal) {
+                // Forzamos mantener la hora original — el merge: true solo la mantiene
+                // si el campo existe, pero lo reafirmamos explícitamente por seguridad
+                updates.hora = horaOriginal;
+            }
         }
 
         // Actualizamos en la lista de asistencia de hoy (usando merge para no chancar otros datos)
