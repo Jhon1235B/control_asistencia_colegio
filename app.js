@@ -20,6 +20,78 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
+/* ════════════════════════════════════════════════════════════════
+   OPTIMIZACIÓN DE LECTURAS FIREBASE (caché de reportes)
+   - Alumnos: se leen 1 sola vez por sesión y se reutilizan.
+   - Asistencia de meses ya cerrados: se guarda en IndexedDB y
+     las siguientes veces se lee del navegador (0 lecturas Firebase).
+   ════════════════════════════════════════════════════════════════ */
+
+// ── Caché en memoria del padrón de alumnos ──────────────────────
+window.__cacheAlumnos = null; // { dni: {datos...} }
+
+async function cargarAlumnosEnMemoria() {
+    if (window.__cacheAlumnos && Object.keys(window.__cacheAlumnos).length) {
+        return window.__cacheAlumnos;            // ya está en memoria → 0 lecturas
+    }
+    const snap = await getDocs(collection(db, "alumnos"));
+    const mapa = {};
+    snap.forEach(d => { mapa[d.id] = d.data(); });
+    window.__cacheAlumnos = mapa;
+    return mapa;
+}
+// Llamar a esto cada vez que se agrega o elimina un alumno
+window.invalidarCacheAlumnos = () => { window.__cacheAlumnos = null; };
+
+// ── Caché en IndexedDB de la asistencia mensual ─────────────────
+const IDB_NAME = 'reportesIE', IDB_STORE = 'asistenciaMensual', IDB_VER = 1;
+
+function idbAbrir() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_NAME, IDB_VER);
+        req.onupgradeneeded = e => {
+            const d = e.target.result;
+            if (!d.objectStoreNames.contains(IDB_STORE)) d.createObjectStore(IDB_STORE);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror   = () => reject(req.error);
+    });
+}
+async function idbLeer(clave) {
+    try {
+        const d = await idbAbrir();
+        return await new Promise((resolve, reject) => {
+            const r = d.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(clave);
+            r.onsuccess = () => resolve(r.result || null);
+            r.onerror   = () => reject(r.error);
+        });
+    } catch (e) { return null; }
+}
+async function idbGuardar(clave, valor) {
+    try {
+        const d = await idbAbrir();
+        return await new Promise((resolve, reject) => {
+            const r = d.transaction(IDB_STORE, 'readwrite').objectStore(IDB_STORE).put(valor, clave);
+            r.onsuccess = () => resolve(true);
+            r.onerror   = () => reject(r.error);
+        });
+    } catch (e) { return false; }
+}
+// Borra toda la caché de reportes (útil si se corrige un mes pasado)
+window.limpiarCacheReportes = async () => {
+    try {
+        const d = await idbAbrir();
+        await new Promise((resolve, reject) => {
+            const r = d.transaction(IDB_STORE, 'readwrite').objectStore(IDB_STORE).clear();
+            r.onsuccess = () => resolve(true);
+            r.onerror   = () => reject(r.error);
+        });
+        window.__cacheAlumnos = null;
+        alert("Caché de reportes borrada. El próximo reporte se leerá de nuevo desde Firebase.");
+    } catch (e) { alert("No se pudo borrar la caché: " + e.message); }
+};
+
+
 // 1. Proteger el sistema al cargar la página
 document.addEventListener('DOMContentLoaded', () => {
     // Ocultar las secciones del sistema hasta validar la sesión
@@ -52,6 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             try {
                 await setDoc(doc(db, "alumnos", dni), datos);
+                window.invalidarCacheAlumnos();
                 alert("Alumno guardado con éxito");
                 window.generarSoloQR(dni);
                 registroForm.reset();
@@ -516,6 +589,7 @@ window.escanearYRegistrarMasivo = async () => {
         }
 
         log.innerHTML += `<br><span class="text-yellow-300 font-bold">🎉 Proceso completado: ${total} alumnos registrados.</span>`;
+        window.invalidarCacheAlumnos();
         alert(`✅ Éxito. Se registraron ${total} alumnos.`);
         if (typeof window.cargarBloques === 'function') await window.cargarBloques();
 
@@ -760,17 +834,16 @@ window.generarReporteDiarioGeneral = async () => {
             fechas.push({ fecha, dia: d, diaSemana: new Date(year, month-1, d).getDay() });
         }
 
-        // ── Cargar alumnos ──────────────────────────────────
-        const snapAlumnos = await getDocs(collection(db, "alumnos"));
+        // ── Cargar alumnos (desde memoria → 0 lecturas tras la 1ª vez) ─
+        const padron = await cargarAlumnosEnMemoria();
         const alumnos = {};
-        snapAlumnos.forEach(docAlu => {
-            const d = docAlu.data();
+        Object.entries(padron).forEach(([id, d]) => {
             const gr  = String(d.grado   || '').trim();
             const sec = String(d.seccion || '').trim().toUpperCase();
             if (filtroGrado && gr  !== filtroGrado)              return;
             if (filtroSec   && sec !== filtroSec.toUpperCase())  return;
-            alumnos[docAlu.id] = {
-                ...d, dni: docAlu.id,
+            alumnos[id] = {
+                ...d, dni: id,
                 diasReg: {},       // fecha → datos del registro
                 listadoInc: [],    // [{ fecha, diaSemana, emoji, label, valor }]
                 listadoTard: [],   // [{ fecha, dia, diaSemana, hora }]
@@ -778,45 +851,60 @@ window.generarReporteDiarioGeneral = async () => {
             };
         });
 
-        // ── Cargar asistencia día a día ─────────────────────
-        const LOTE = 7;
-        for (let i = 0; i < fechas.length; i += LOTE) {
-            const lote = fechas.slice(i, i + LOTE);
-            const snaps = await Promise.all(
-                lote.map(f => getDocs(collection(db, "asistencia", f.fecha, "registros")))
-            );
-            snaps.forEach((snap, si) => {
-                const fInfo = lote[si];
-                snap.forEach(docReg => {
-                    const dni = docReg.id;
-                    if (!alumnos[dni]) return;
-                    const data = docReg.data();
-                    alumnos[dni].diasReg[fInfo.fecha] = data;
+        // ── Cargar asistencia del mes (con caché de meses cerrados) ─
+        // Solo días hábiles: los fines de semana no tienen registros.
+        const diasHabiles = fechas.filter(f => f.diaSemana !== 0 && f.diaSemana !== 6);
+        const mesActualYM  = new Date().toISOString().slice(0, 7); // "2026-06"
+        const mesCerrado   = mes < mesActualYM;  // un mes pasado ya no cambia
+        const claveCache   = `asist_${mes}`;
 
-                    const est = (data.estado || '').toLowerCase();
-                    if      (est.includes('justificad'))  alumnos[dni].justificados++;
-                    if      (est.includes('tardanza'))    { alumnos[dni].tardanzas++; alumnos[dni].asistencias++; }
-                    else if (est.includes('falta') && !est.includes('justificad')) alumnos[dni].faltas++;
-                    else if (est !== '')                  alumnos[dni].asistencias++;
-                    else                                  alumnos[dni].faltas++;
+        let regsPorFecha = null;
+        if (mesCerrado) regsPorFecha = await idbLeer(claveCache); // intenta caché
 
-                    // Registrar incidencias con detalle
-                    TIPOS_INCIDENCIA.forEach(t => {
-                        if (data[t.campo]) {
-                            alumnos[dni].incidencias++;
-                            alumnos[dni].listadoInc.push({
-                                fecha:     fInfo.fecha,
-                                dia:       fInfo.dia,
-                                diaSemana: fInfo.diaSemana,
-                                emoji:     t.emoji,
-                                label:     t.label,
-                                valor:     data[t.campo]
-                            });
-                        }
-                    });
+        if (!regsPorFecha) {
+            // No hay caché → leer de Firebase en lotes
+            regsPorFecha = {};
+            const LOTE = 7;
+            for (let i = 0; i < diasHabiles.length; i += LOTE) {
+                const lote = diasHabiles.slice(i, i + LOTE);
+                const snaps = await Promise.all(
+                    lote.map(f => getDocs(collection(db, "asistencia", f.fecha, "registros")))
+                );
+                snaps.forEach((snap, si) => {
+                    const dia = {};
+                    snap.forEach(docReg => { dia[docReg.id] = docReg.data(); });
+                    regsPorFecha[lote[si].fecha] = dia;
+                });
+            }
+            // Guardar en IndexedDB solo si el mes ya cerró (no cambiará)
+            if (mesCerrado) await idbGuardar(claveCache, regsPorFecha);
+        }
+
+        // ── Aplicar los registros a cada alumno ─────────────
+        diasHabiles.forEach(fInfo => {
+            const dia = regsPorFecha[fInfo.fecha];
+            if (!dia) return;
+            Object.entries(dia).forEach(([dni, data]) => {
+                if (!alumnos[dni]) return;
+                alumnos[dni].diasReg[fInfo.fecha] = data;
+
+                // Incidencias con detalle (los contadores A/T/F/J se recalculan más abajo)
+                TIPOS_INCIDENCIA.forEach(t => {
+                    if (data[t.campo]) {
+                        alumnos[dni].incidencias++;
+                        alumnos[dni].listadoInc.push({
+                            fecha:     fInfo.fecha,
+                            dia:       fInfo.dia,
+                            diaSemana: fInfo.diaSemana,
+                            emoji:     t.emoji,
+                            label:     t.label,
+                            valor:     data[t.campo]
+                        });
+                    }
                 });
             });
-        }
+        });
+
 
         // ── Detectar FERIADOS: días hábiles sin ningún registro ─
         const feriadosSet = new Set();
@@ -1049,8 +1137,8 @@ window.generarReporteDiarioGeneral = async () => {
                 // Resumen vacío (la incidencia ya está contada en la fila principal)
                 incCeldas += `<td style="background:#fff7ed;border:1px solid #fed7aa;" colspan="5">
                     <div style="padding:2px 6px;">
-                        ${alu.listadoInc.map(i =>
-                            `<span style="font-size:9px;color:#7c2d12;font-weight:700;">${i.emoji} <b>${i.label}</b> (día ${i.dia}): ${i.valor}</span><br>`
+                        ${alu.listadoInc.map((i, n) =>
+                            `<span style="font-size:9px;color:#7c2d12;font-weight:700;"><b>${n+1}.</b> ${i.emoji} <b>${i.label}</b> (día ${i.dia}): ${i.valor}</span><br>`
                         ).join('')}
                     </div>
                 </td>`;
@@ -1092,8 +1180,8 @@ window.generarReporteDiarioGeneral = async () => {
 
                 tardCeldas += `<td style="background:#fffbeb;border:1px solid #fde68a;" colspan="5">
                     <div style="padding:2px 6px;">
-                        ${alu.listadoTard.map(t =>
-                            `<span style="font-size:9px;color:#78350f;font-weight:700;">⏱ <b>Día ${t.dia}</b>${t.hora?' ('+t.hora+')':''}: ${t.estado}</span><br>`
+                        ${alu.listadoTard.map((t, n) =>
+                            `<span style="font-size:9px;color:#78350f;font-weight:700;"><b>${n+1}.</b> ⏱ <b>Día ${t.dia}</b>${t.hora?' ('+t.hora+')':''}: ${t.estado}</span><br>`
                         ).join('')}
                     </div>
                 </td>`;
@@ -1216,19 +1304,19 @@ window.descargarReporteMensualExcel = () => {
 
     // ── Fila de TOTALES ─────────────────────────────────────
     const totRow = { "N°": '', "APELLIDOS Y NOMBRES": '▶ TOTALES', "DNI": '', "SEXO": '' };
+    const feriadosExcel = window.reporteMensualFeriados || new Set();
     fechas.forEach(f => {
         const colKey = `${DS[f.diaSemana]} ${f.dia}`;
         const esFS = f.diaSemana === 0 || f.diaSemana === 6;
         if (esFS) { totRow[colKey] = ''; return; }
+        if (feriadosExcel.has(f.fecha)) { totRow[colKey] = 'FER'; return; } // feriado: no cuenta
         let cA=0, cT=0, cF=0;
         window.reporteMensualData.forEach(item => {
             const reg = item.diasReg ? item.diasReg[f.fecha] : null;
-            if (!reg) { cF++; return; }
-            const est = (reg.estado || '').toLowerCase();
-            if      (est.includes('tardanza')) cT++;
-            else if (est.includes('falta'))    cF++;
-            else if (est !== '')               cA++;
-            else                               cF++;
+            const l = getEstadoCelda(reg).letra; // misma clasificación que la tabla
+            if      (l === 'A') cA++;
+            else if (l === 'T') cT++;
+            else if (l === 'F') cF++;
         });
         totRow[colKey] = `A:${cA} T:${cT} F:${cF}`;
     });
@@ -1247,9 +1335,11 @@ window.descargarReporteMensualExcel = () => {
 
     // ── Hoja 2: Detalle completo de incidencias ─────────────
     const incData = [];
+    let nInc = 0;
     window.reporteMensualData.forEach(item => {
         (item.listadoInc || []).forEach(inc => {
             incData.push({
+                "N°":                  ++nInc,
                 "APELLIDOS Y NOMBRES": item.nombres || '',
                 "AULA":                aulaDeAlumno(item),
                 "DNI":                 item.dni     || '',
@@ -1264,9 +1354,11 @@ window.descargarReporteMensualExcel = () => {
 
     // ── Hoja 3: Detalle completo de tardanzas ───────────────
     const tardData = [];
+    let nTard = 0;
     window.reporteMensualData.forEach(item => {
         (item.listadoTard || []).forEach(t => {
             tardData.push({
+                "N°":                  ++nTard,
                 "APELLIDOS Y NOMBRES": item.nombres || '',
                 "AULA":                aulaDeAlumno(item),
                 "DNI":                 item.dni     || '',
@@ -1342,18 +1434,18 @@ window.descargarReporteMensualPDF = () => {
 
     // ── Fila totales ────────────────────────────────────────
     const totRow = ['', 'TOTALES GENERALES', '', ''];
+    const feriadosPDF = window.reporteMensualFeriados || new Set();
     fechas.forEach(f => {
         const esFS = f.diaSemana === 0 || f.diaSemana === 6;
         if (esFS) { totRow.push(''); return; }
+        if (feriadosPDF.has(f.fecha)) { totRow.push('FER'); return; } // feriado: no cuenta
         let cA=0,cT=0,cF=0;
         window.reporteMensualData.forEach(item => {
             const reg = item.diasReg ? item.diasReg[f.fecha] : null;
-            if (!reg) { cF++; return; }
-            const est = (reg.estado||'').toLowerCase();
-            if      (est.includes('tardanza')) cT++;
-            else if (est.includes('falta'))    cF++;
-            else if (est !== '')               cA++;
-            else                               cF++;
+            const l = getEstadoCelda(reg).letra; // misma clasificación que la tabla
+            if      (l === 'A') cA++;
+            else if (l === 'T') cT++;
+            else if (l === 'F') cF++;
         });
         totRow.push(`${cA}/${cT}/${cF}`);
     });
@@ -1417,9 +1509,11 @@ window.descargarReporteMensualPDF = () => {
 
     // ── PÁGINA 2: Detalle de Incidencias ────────────────────
     const incList = [];
+    let nIncPDF = 0;
     window.reporteMensualData.forEach(item => {
         (item.listadoInc || []).forEach(inc => {
             incList.push([
+                ++nIncPDF,
                 item.nombres || '',
                 aulaDeAlumno(item),
                 item.dni || '',
@@ -1444,29 +1538,32 @@ window.descargarReporteMensualPDF = () => {
         docPDF.autoTable({
             startY: 23,
             margin: { left: 8, right: 8 },
-            head: [['APELLIDOS Y NOMBRES', 'AULA', 'DNI', 'FECHA', 'DÍA', 'TIPO', 'DESCRIPCIÓN']],
+            head: [['N°', 'APELLIDOS Y NOMBRES', 'AULA', 'DNI', 'FECHA', 'DÍA', 'TIPO', 'DESCRIPCIÓN']],
             body: incList,
             theme: 'striped',
             styles:     { fontSize: 9, cellPadding: 2, valign: 'middle', overflow: 'linebreak' },
             headStyles: { fillColor: [234, 88, 12], textColor: 255, fontStyle: 'bold', fontSize: 9 },
             alternateRowStyles: { fillColor: [255, 237, 213] },
             columnStyles: {
-                0: { cellWidth: 62 },
-                1: { cellWidth: 18 },
-                2: { cellWidth: 24 },
-                3: { cellWidth: 26 },
-                4: { cellWidth: 18 },
-                5: { cellWidth: 30 },
-                6: { cellWidth: 'auto' }
+                0: { cellWidth: 10, halign: 'center' },
+                1: { cellWidth: 58 },
+                2: { cellWidth: 18 },
+                3: { cellWidth: 22 },
+                4: { cellWidth: 24 },
+                5: { cellWidth: 18 },
+                6: { cellWidth: 28 },
+                7: { cellWidth: 'auto' }
             }
         });
     }
 
     // ── PÁGINA 3: Detalle de Tardanzas ──────────────────────
     const tardList = [];
+    let nTardPDF = 0;
     window.reporteMensualData.forEach(item => {
         (item.listadoTard || []).forEach(t => {
             tardList.push([
+                ++nTardPDF,
                 item.nombres || '',
                 aulaDeAlumno(item),
                 item.dni || '',
@@ -1491,20 +1588,21 @@ window.descargarReporteMensualPDF = () => {
         docPDF.autoTable({
             startY: 23,
             margin: { left: 8, right: 8 },
-            head: [['APELLIDOS Y NOMBRES', 'AULA', 'DNI', 'FECHA', 'DÍA', 'HORA', 'ESTADO']],
+            head: [['N°', 'APELLIDOS Y NOMBRES', 'AULA', 'DNI', 'FECHA', 'DÍA', 'HORA', 'ESTADO']],
             body: tardList,
             theme: 'striped',
             styles:     { fontSize: 9, cellPadding: 2, valign: 'middle', overflow: 'linebreak' },
             headStyles: { fillColor: [217, 119, 6], textColor: 255, fontStyle: 'bold', fontSize: 9 },
             alternateRowStyles: { fillColor: [254, 243, 199] },
             columnStyles: {
-                0: { cellWidth: 62 },
-                1: { cellWidth: 18 },
-                2: { cellWidth: 24 },
-                3: { cellWidth: 26 },
-                4: { cellWidth: 18 },
-                5: { cellWidth: 24 },
-                6: { cellWidth: 'auto' }
+                0: { cellWidth: 10, halign: 'center' },
+                1: { cellWidth: 58 },
+                2: { cellWidth: 18 },
+                3: { cellWidth: 22 },
+                4: { cellWidth: 24 },
+                5: { cellWidth: 18 },
+                6: { cellWidth: 24 },
+                7: { cellWidth: 'auto' }
             }
         });
     }
@@ -2108,7 +2206,7 @@ window.editarAlumno = (dni, nombres, grado, seccion, telefono, apoderado) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-window.eliminarAlumno = async (id) => { if(confirm("¿Eliminar?")) await deleteDoc(doc(db, "alumnos", id)); };
+window.eliminarAlumno = async (id) => { if(confirm("¿Eliminar?")) { await deleteDoc(doc(db, "alumnos", id)); window.invalidarCacheAlumnos(); } };
 
 // --- 3. JUSTIFICAR Y CONDUCTA (Sincronizado con el modelo de la App) ---
 window.justificarFalta = async (dni, nombre) => {
