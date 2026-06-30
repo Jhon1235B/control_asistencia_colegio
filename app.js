@@ -708,6 +708,14 @@ const TIPOS_INCIDENCIA = [
     { campo: 'alertaSalud',     emoji: '', label: 'Salida/Permiso'      },
 ];
 
+/** Devuelve el aula (grado + sección) de un alumno, ej: 3° "B" */
+function aulaDeAlumno(alu) {
+    const g = String(alu.grado   || '').trim();
+    const s = String(alu.seccion || '').trim().toUpperCase();
+    if (!g && !s) return 'SIN AULA';
+    return `${g || '?'}° "${s || '?'}"`;
+}
+
 /** Devuelve info de celda para un registro de un día */
 function getEstadoCelda(reg) {
     if (!reg) return { letra:'F', bg:'#ef4444', color:'#fff', titulo:'Sin registro', tieneIncidencia:false, detalleInc:[] };
@@ -765,6 +773,7 @@ window.generarReporteDiarioGeneral = async () => {
                 ...d, dni: docAlu.id,
                 diasReg: {},       // fecha → datos del registro
                 listadoInc: [],    // [{ fecha, diaSemana, emoji, label, valor }]
+                listadoTard: [],   // [{ fecha, dia, diaSemana, hora }]
                 asistencias: 0, tardanzas: 0, faltas: 0, justificados: 0, incidencias: 0
             };
         });
@@ -821,6 +830,7 @@ window.generarReporteDiarioGeneral = async () => {
         Object.values(alumnos).forEach(alu => {
             // Resetear contadores
             alu.asistencias = 0; alu.tardanzas = 0; alu.faltas = 0; alu.justificados = 0;
+            alu.listadoTard = [];
             fechas.forEach(f => {
                 if (f.diaSemana === 0 || f.diaSemana === 6) return; // fin de semana
                 if (feriadosSet.has(f.fecha)) return;               // feriado → no cuenta
@@ -828,7 +838,16 @@ window.generarReporteDiarioGeneral = async () => {
                 if (!data) { alu.faltas++; return; }                // día hábil sin registro = falta
                 const est = (data.estado || '').toLowerCase();
                 if      (est.includes('justificad'))  alu.justificados++;
-                if      (est.includes('tardanza'))    { alu.tardanzas++; alu.asistencias++; }
+                if      (est.includes('tardanza'))    {
+                    alu.tardanzas++; alu.asistencias++;
+                    alu.listadoTard.push({
+                        fecha:     f.fecha,
+                        dia:       f.dia,
+                        diaSemana: f.diaSemana,
+                        hora:      data.hora || '',
+                        estado:    data.estado || 'Tardanza'
+                    });
+                }
                 else if (est.includes('falta') && !est.includes('justificad')) alu.faltas++;
                 else if (est !== '')                  alu.asistencias++;
                 else                                  alu.faltas++;
@@ -1009,7 +1028,7 @@ window.generarReporteDiarioGeneral = async () => {
                 // Columnas fijas (N° y nombre en la fila de incidencias)
                 let incCeldas = `
                     <td colspan="2" style="position:sticky;left:0;z-index:10;background:#fff7ed;padding:3px 6px;border:1px solid #fed7aa;border-left:3px solid #f97316;">
-                        <span style="font-size:9px;font-weight:900;color:#ea580c;text-transform:uppercase;">⚠ INCIDENCIAS — ${alu.nombres}</span>
+                        <span style="font-size:9px;font-weight:900;color:#ea580c;text-transform:uppercase;">⚠ INCIDENCIAS — ${alu.nombres} <span style="color:#9a3412;background:#ffedd5;border-radius:3px;padding:0 4px;margin-left:2px;">AULA: ${aulaDeAlumno(alu)}</span></span>
                     </td>
                     <td style="background:#fff7ed;border:1px solid #fed7aa;"></td>
                     <td style="background:#fff7ed;border:1px solid #fed7aa;"></td>`;
@@ -1038,6 +1057,49 @@ window.generarReporteDiarioGeneral = async () => {
 
                 trInc.innerHTML = incCeldas;
                 fragment.appendChild(trInc);
+            }
+
+            // ── Fila de TARDANZAS detalladas ───────────────
+            if (alu.listadoTard && alu.listadoTard.length > 0) {
+                const trTard = document.createElement('tr');
+                trTard.style.cssText = `background:#fffbeb;`;
+
+                // Agrupar tardanzas: fecha → lista
+                const tardPorDia = {};
+                alu.listadoTard.forEach(t => {
+                    if (!tardPorDia[t.fecha]) tardPorDia[t.fecha] = [];
+                    tardPorDia[t.fecha].push(t);
+                });
+
+                let tardCeldas = `
+                    <td colspan="2" style="position:sticky;left:0;z-index:10;background:#fffbeb;padding:3px 6px;border:1px solid #fde68a;border-left:3px solid #f59e0b;">
+                        <span style="font-size:9px;font-weight:900;color:#b45309;text-transform:uppercase;">⏱ TARDANZAS — ${alu.nombres} <span style="color:#92400e;background:#fef3c7;border-radius:3px;padding:0 4px;margin-left:2px;">AULA: ${aulaDeAlumno(alu)}</span></span>
+                    </td>
+                    <td style="background:#fffbeb;border:1px solid #fde68a;"></td>
+                    <td style="background:#fffbeb;border:1px solid #fde68a;"></td>`;
+
+                fechas.forEach(f => {
+                    const tards = tardPorDia[f.fecha];
+                    if (!tards || tards.length === 0) {
+                        tardCeldas += `<td style="background:#fffbeb;border:1px solid #fde68a;min-width:26px;max-width:26px;"></td>`;
+                    } else {
+                        const tags = tards.map(t =>
+                            `<span title="${t.estado}${t.hora?' ('+t.hora+')':''}" style="display:inline-block;background:#f59e0b;color:#fff;border-radius:3px;padding:0 3px;font-size:8px;font-weight:900;line-height:14px;margin:1px;">${t.hora || 'T'}</span>`
+                        ).join('');
+                        tardCeldas += `<td style="background:#fffbeb;border:1px solid #fde68a;min-width:26px;max-width:26px;padding:2px;text-align:center;vertical-align:middle;">${tags}</td>`;
+                    }
+                });
+
+                tardCeldas += `<td style="background:#fffbeb;border:1px solid #fde68a;" colspan="5">
+                    <div style="padding:2px 6px;">
+                        ${alu.listadoTard.map(t =>
+                            `<span style="font-size:9px;color:#78350f;font-weight:700;">⏱ <b>Día ${t.dia}</b>${t.hora?' ('+t.hora+')':''}: ${t.estado}</span><br>`
+                        ).join('')}
+                    </div>
+                </td>`;
+
+                trTard.innerHTML = tardCeldas;
+                fragment.appendChild(trTard);
             }
         });
 
@@ -1189,6 +1251,7 @@ window.descargarReporteMensualExcel = () => {
         (item.listadoInc || []).forEach(inc => {
             incData.push({
                 "APELLIDOS Y NOMBRES": item.nombres || '',
+                "AULA":                aulaDeAlumno(item),
                 "DNI":                 item.dni     || '',
                 "FECHA":               inc.fecha,
                 "DÍA":                 inc.dia,
@@ -1199,11 +1262,30 @@ window.descargarReporteMensualExcel = () => {
         });
     });
 
+    // ── Hoja 3: Detalle completo de tardanzas ───────────────
+    const tardData = [];
+    window.reporteMensualData.forEach(item => {
+        (item.listadoTard || []).forEach(t => {
+            tardData.push({
+                "APELLIDOS Y NOMBRES": item.nombres || '',
+                "AULA":                aulaDeAlumno(item),
+                "DNI":                 item.dni     || '',
+                "FECHA":               t.fecha,
+                "DÍA":                 t.dia,
+                "DÍA SEMANA":          ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][t.diaSemana],
+                "HORA":                t.hora || '',
+                "ESTADO":              t.estado || 'Tardanza'
+            });
+        });
+    });
+
     const ws1 = XLSX.utils.json_to_sheet(dataExcel);
     const ws2 = XLSX.utils.json_to_sheet(incData.length > 0 ? incData : [{ "MENSAJE": "No hubo incidencias en este período." }]);
+    const ws3 = XLSX.utils.json_to_sheet(tardData.length > 0 ? tardData : [{ "MENSAJE": "No hubo tardanzas en este período." }]);
     const wb  = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws1, "Asistencia Mensual");
     XLSX.utils.book_append_sheet(wb, ws2, "Detalle Incidencias");
+    XLSX.utils.book_append_sheet(wb, ws3, "Detalle Tardanzas");
     XLSX.writeFile(wb, `Asistencia_Mensual_${mes}.xlsx`);
 };
 
@@ -1214,7 +1296,7 @@ window.descargarReporteMensualPDF = () => {
     }
 
     const { jsPDF } = window.jspdf;
-    const docPDF = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' });
+    const docPDF = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const mes    = window.reporteMensualMes || document.getElementById('mesConsulta').value;
     const fechas = window.reporteMensualFechas || [];
     const DS     = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
@@ -1224,22 +1306,23 @@ window.descargarReporteMensualPDF = () => {
 
     // ── Encabezado institucional ────────────────────────────
     docPDF.setFont("Helvetica", "bold");
-    docPDF.setFontSize(13);
+    docPDF.setFontSize(12);
     docPDF.setTextColor(21, 128, 61);
-    docPDF.text("I.E. HORACIO ZEVALLOS GÁMEZ — MALINGAS", 14, 12);
-    docPDF.setFontSize(9);
+    docPDF.text("I.E. HORACIO ZEVALLOS GÁMEZ — MALINGAS", 10, 10);
+    docPDF.setFontSize(8.5);
     docPDF.setTextColor(80);
-    docPDF.text(`REGISTRO DE ASISTENCIA MENSUAL | ${ME[month-1]} ${year}`, 14, 18);
-    docPDF.text(`(*) = día con incidencia  |  A=Asistió  T=Tardanza  F=Falta  J=Justificado`, 14, 23);
+    docPDF.text(`REGISTRO DE ASISTENCIA MENSUAL  |  ${ME[month-1]} ${year}`, 10, 15);
+    docPDF.setFontSize(7);
+    docPDF.text(`(*) = día con incidencia   |   A = Asistió    T = Tardanza    F = Falta    J = Justificado    FER = Feriado`, 10, 19);
 
     // ── Columnas encabezado ─────────────────────────────────
-    const headCols = ["N°", "APELLIDOS Y NOMBRES", "DNI"];
+    const headCols = ["N°", "APELLIDOS Y NOMBRES", "AULA", "DNI"];
     fechas.forEach(f => headCols.push(`${DS[f.diaSemana]}\n${f.dia}`));
     headCols.push("A", "T", "F", "J", "INC.");
 
     // ── Filas de datos ──────────────────────────────────────
     const tableData = window.reporteMensualData.map((item, idx) => {
-        const row = [idx + 1, item.nombres || '', item.dni || ''];
+        const row = [idx + 1, item.nombres || '', aulaDeAlumno(item), item.dni || ''];
         fechas.forEach(f => {
             const esFS = f.diaSemana === 0 || f.diaSemana === 6;
             if (esFS) { row.push(''); return; }
@@ -1258,7 +1341,7 @@ window.descargarReporteMensualPDF = () => {
     });
 
     // ── Fila totales ────────────────────────────────────────
-    const totRow = ['', 'TOTALES GENERALES', ''];
+    const totRow = ['', 'TOTALES GENERALES', '', ''];
     fechas.forEach(f => {
         const esFS = f.diaSemana === 0 || f.diaSemana === 6;
         if (esFS) { totRow.push(''); return; }
@@ -1282,15 +1365,36 @@ window.descargarReporteMensualPDF = () => {
     totRow.push(sumA, sumT, sumF, sumJ, sumInc);
     tableData.push(totRow);
 
+    // ── Ancho dinámico: que la tabla ocupe TODO el ancho de la hoja A4 ─
+    const margenLat = 6;
+    const anchoPagina = docPDF.internal.pageSize.getWidth();
+    const anchoUtil   = anchoPagina - (margenLat * 2);
+    const wNum = 6, wNom = 40, wAula = 12, wDni = 15, wResumen = 8;
+    const anchoFijo = wNum + wNom + wAula + wDni + (wResumen * 5);
+    const nDias = fechas.length;
+    const wDia = Math.max(4, (anchoUtil - anchoFijo) / Math.max(nDias, 1));
+
+    // columnStyles dinámico
+    const colStyles = {
+        0: { cellWidth: wNum },
+        1: { cellWidth: wNom, halign: 'left' },
+        2: { cellWidth: wAula, fontStyle: 'bold' },
+        3: { cellWidth: wDni }
+    };
+    for (let d = 0; d < nDias; d++) colStyles[4 + d] = { cellWidth: wDia };
+    for (let r = 0; r < 5; r++)     colStyles[4 + nDias + r] = { cellWidth: wResumen, fontStyle: 'bold' };
+
     // ── Tabla principal ─────────────────────────────────────
     docPDF.autoTable({
-        startY: 27,
+        startY: 22,
         head: [headCols],
         body: tableData,
         theme: 'grid',
-        styles:     { fontSize: 5.5, cellPadding: 1, halign: 'center', valign: 'middle', overflow: 'linebreak' },
-        headStyles: { fillColor: [21, 128, 61], textColor: 255, fontSize: 5.5, fontStyle: 'bold', halign: 'center' },
-        columnStyles: { 0: { cellWidth: 7 }, 1: { cellWidth: 40, halign: 'left' }, 2: { cellWidth: 17 } },
+        margin: { left: margenLat, right: margenLat },
+        tableWidth: 'wrap',
+        styles:     { fontSize: 5, cellPadding: 0.6, halign: 'center', valign: 'middle', overflow: 'linebreak', minCellHeight: 4, lineWidth: 0.1 },
+        headStyles: { fillColor: [21, 128, 61], textColor: 255, fontSize: 5, fontStyle: 'bold', halign: 'center', valign: 'middle' },
+        columnStyles: colStyles,
         willDrawCell: (data) => {
             // Colorear última fila (totales)
             if (data.section==='body' && data.row.index===tableData.length-1) {
@@ -1317,6 +1421,7 @@ window.descargarReporteMensualPDF = () => {
         (item.listadoInc || []).forEach(inc => {
             incList.push([
                 item.nombres || '',
+                aulaDeAlumno(item),
                 item.dni || '',
                 inc.fecha,
                 `${DS[inc.diaSemana]} ${inc.dia}`,
@@ -1329,27 +1434,77 @@ window.descargarReporteMensualPDF = () => {
     if (incList.length > 0) {
         docPDF.addPage();
         docPDF.setFont("Helvetica", "bold");
-        docPDF.setFontSize(12);
+        docPDF.setFontSize(13);
         docPDF.setTextColor(234, 88, 12);
-        docPDF.text("DETALLE DE INCIDENCIAS — " + ME[month-1] + ' ' + year, 14, 14);
-        docPDF.setFontSize(8);
+        docPDF.text("DETALLE DE INCIDENCIAS — " + ME[month-1] + ' ' + year, 10, 13);
+        docPDF.setFontSize(9);
         docPDF.setTextColor(100);
-        docPDF.text(`Total de incidencias registradas: ${incList.length}`, 14, 20);
+        docPDF.text(`Total de incidencias registradas: ${incList.length}`, 10, 19);
 
         docPDF.autoTable({
-            startY: 24,
-            head: [['APELLIDOS Y NOMBRES', 'DNI', 'FECHA', 'DÍA', 'TIPO', 'DESCRIPCIÓN']],
+            startY: 23,
+            margin: { left: 8, right: 8 },
+            head: [['APELLIDOS Y NOMBRES', 'AULA', 'DNI', 'FECHA', 'DÍA', 'TIPO', 'DESCRIPCIÓN']],
             body: incList,
             theme: 'striped',
-            styles:     { fontSize: 8, cellPadding: 2 },
-            headStyles: { fillColor: [234, 88, 12], textColor: 255, fontStyle: 'bold' },
+            styles:     { fontSize: 9, cellPadding: 2, valign: 'middle', overflow: 'linebreak' },
+            headStyles: { fillColor: [234, 88, 12], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+            alternateRowStyles: { fillColor: [255, 237, 213] },
             columnStyles: {
-                0: { cellWidth: 65 },
-                1: { cellWidth: 22 },
+                0: { cellWidth: 62 },
+                1: { cellWidth: 18 },
                 2: { cellWidth: 24 },
-                3: { cellWidth: 20 },
-                4: { cellWidth: 25 },
-                5: { cellWidth: 'auto' }
+                3: { cellWidth: 26 },
+                4: { cellWidth: 18 },
+                5: { cellWidth: 30 },
+                6: { cellWidth: 'auto' }
+            }
+        });
+    }
+
+    // ── PÁGINA 3: Detalle de Tardanzas ──────────────────────
+    const tardList = [];
+    window.reporteMensualData.forEach(item => {
+        (item.listadoTard || []).forEach(t => {
+            tardList.push([
+                item.nombres || '',
+                aulaDeAlumno(item),
+                item.dni || '',
+                t.fecha,
+                `${DS[t.diaSemana]} ${t.dia}`,
+                t.hora || '',
+                t.estado || 'Tardanza'
+            ]);
+        });
+    });
+
+    if (tardList.length > 0) {
+        docPDF.addPage();
+        docPDF.setFont("Helvetica", "bold");
+        docPDF.setFontSize(13);
+        docPDF.setTextColor(217, 119, 6);
+        docPDF.text("DETALLE DE TARDANZAS — " + ME[month-1] + ' ' + year, 10, 13);
+        docPDF.setFontSize(9);
+        docPDF.setTextColor(100);
+        docPDF.text(`Total de tardanzas registradas: ${tardList.length}`, 10, 19);
+
+        docPDF.autoTable({
+            startY: 23,
+            margin: { left: 8, right: 8 },
+            head: [['APELLIDOS Y NOMBRES', 'AULA', 'DNI', 'FECHA', 'DÍA', 'HORA', 'ESTADO']],
+            body: tardList,
+            theme: 'striped',
+            styles:     { fontSize: 9, cellPadding: 2, valign: 'middle', overflow: 'linebreak' },
+            headStyles: { fillColor: [217, 119, 6], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+            alternateRowStyles: { fillColor: [254, 243, 199] },
+            columnStyles: {
+                0: { cellWidth: 62 },
+                1: { cellWidth: 18 },
+                2: { cellWidth: 24 },
+                3: { cellWidth: 26 },
+                4: { cellWidth: 18 },
+                5: { cellWidth: 24 },
+                6: { cellWidth: 'auto' }
             }
         });
     }
